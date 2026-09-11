@@ -12,10 +12,19 @@ export type Lead = {
   id: string;
   name: string;
   phone: string;
-  company?: string;
-  email?: string;
   status: LeadStatus;
   notes?: string;
   followUpDate?: string;
   createdAt: string;
+};
+
+export type CallHistory = {
+  id: string;
+  leadId: string;
+  leadName: string;
+  phone: string;
+  outcome: LeadStatus;
+  notes?: string;
+  calledAt: string;
+  followUpDate?: string;
 };

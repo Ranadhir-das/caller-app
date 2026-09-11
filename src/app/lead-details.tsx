@@ -1,28 +1,128 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { leads } from '@/data/leads';
+import { AnimatedBackButton } from '@/components/AnimatedBackButton';
+
+import { useLeads } from '@/context/LeadContext';
+import { Lead } from '@/types';
 
 export default function LeadDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { leads } = useLeads();
 
   const lead = leads.find((item) => item.id === id);
+
+  const getStatusLabel = (status: Lead['status']) => {
+    switch (status) {
+      case 'pending':
+        return 'Pending';
+
+      case 'interested':
+        return 'Interested';
+
+      case 'not_interested':
+        return 'Not Interested';
+
+      case 'no_answer':
+        return 'No Answer';
+
+      case 'busy':
+        return 'Busy';
+
+      case 'call_back':
+        return 'Call Back';
+
+      case 'wrong_number':
+        return 'Wrong Number';
+
+      default:
+        return 'Called';
+    }
+  };
+
+  const getStatusStyle = (status: Lead['status']) => {
+    switch (status) {
+      case 'pending':
+        return {
+          container: styles.pendingStatus,
+          text: styles.pendingStatusText,
+        };
+
+      case 'interested':
+        return {
+          container: styles.interestedStatus,
+          text: styles.interestedStatusText,
+        };
+
+      case 'not_interested':
+        return {
+          container: styles.notInterestedStatus,
+          text: styles.notInterestedStatusText,
+        };
+
+      case 'no_answer':
+        return {
+          container: styles.noAnswerStatus,
+          text: styles.noAnswerStatusText,
+        };
+
+      case 'busy':
+        return {
+          container: styles.busyStatus,
+          text: styles.busyStatusText,
+        };
+
+      case 'call_back':
+        return {
+          container: styles.callBackStatus,
+          text: styles.callBackStatusText,
+        };
+
+      case 'wrong_number':
+        return {
+          container: styles.wrongNumberStatus,
+          text: styles.wrongNumberStatusText,
+        };
+
+      default:
+        return {
+          container: styles.defaultStatus,
+          text: styles.defaultStatusText,
+        };
+    }
+  };
 
   if (!lead) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.errorTitle}>Lead not found</Text>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorIcon}>⚠️</Text>
 
-        <Pressable
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backButtonText}>Go Back</Text>
-        </Pressable>
+          <Text style={styles.errorTitle}>
+            Student not found
+          </Text>
+
+          <Text style={styles.errorText}>
+            This student may no longer be available.
+          </Text>
+
+          <AnimatedBackButton
+            style={styles.backButton}
+            onPress={() => router.replace('/(tabs)/leads')}
+          />
+        </View>
       </SafeAreaView>
     );
   }
+
+  const statusStyle = getStatusStyle(lead.status);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -31,20 +131,22 @@ export default function LeadDetailsScreen() {
         contentContainerStyle={styles.content}
       >
         {/* Header */}
-        <View style={styles.header}>
-          <Pressable
-            style={styles.backCircle}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backIcon}>‹</Text>
-          </Pressable>
 
-          <Text style={styles.headerTitle}>Lead Details</Text>
+        <View style={styles.header}>
+          <AnimatedBackButton
+            style={styles.backCircle}
+            onPress={() => router.replace('/(tabs)/leads')}
+          />
+
+          <Text style={styles.headerTitle}>
+            Student Details
+          </Text>
 
           <View style={styles.headerSpace} />
         </View>
 
         {/* Profile */}
+
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
@@ -52,55 +154,56 @@ export default function LeadDetailsScreen() {
             </Text>
           </View>
 
-          <Text style={styles.name}>{lead.name}</Text>
+          <Text style={styles.name}>
+            {lead.name}
+          </Text>
 
-          {lead.company && (
-            <Text style={styles.company}>{lead.company}</Text>
-          )}
-
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>Pending</Text>
+          <View
+            style={[
+              styles.statusBadge,
+              statusStyle.container,
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusText,
+                statusStyle.text,
+              ]}
+            >
+              {getStatusLabel(lead.status)}
+            </Text>
           </View>
         </View>
 
         {/* Contact Information */}
-        <Text style={styles.sectionTitle}>Contact Information</Text>
+
+        <Text style={styles.sectionTitle}>
+          Contact Information
+        </Text>
 
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
-            <Text style={styles.infoIcon}>📞</Text>
+            <Text style={styles.infoIcon}>
+              📞
+            </Text>
 
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Phone</Text>
-              <Text style={styles.infoValue}>{lead.phone}</Text>
+              <Text style={styles.infoLabel}>
+                Phone
+              </Text>
+
+              <Text style={styles.infoValue}>
+                {lead.phone}
+              </Text>
             </View>
           </View>
-
-          {lead.email && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoIcon}>✉️</Text>
-
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Email</Text>
-                <Text style={styles.infoValue}>{lead.email}</Text>
-              </View>
-            </View>
-          )}
-
-          {lead.company && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoIcon}>🏢</Text>
-
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Company</Text>
-                <Text style={styles.infoValue}>{lead.company}</Text>
-              </View>
-            </View>
-          )}
         </View>
 
         {/* Notes */}
-        <Text style={styles.sectionTitle}>Notes</Text>
+
+        <Text style={styles.sectionTitle}>
+          Notes
+        </Text>
 
         <View style={styles.notesCard}>
           <Text style={styles.notesText}>
@@ -108,19 +211,56 @@ export default function LeadDetailsScreen() {
           </Text>
         </View>
 
-        {/* Call Button */}
+        {/* Follow-up */}
+
+        <Text style={styles.sectionTitle}>
+          Follow-up
+        </Text>
+
+        <View style={styles.followUpCard}>
+          <Text style={styles.followUpIcon}>
+            📅
+          </Text>
+
+          <View style={styles.followUpContent}>
+            <Text style={styles.infoLabel}>
+              Follow-up Date
+            </Text>
+
+            <Text style={styles.infoValue}>
+              {lead.followUpDate
+                ? lead.followUpDate
+                : 'No follow-up scheduled'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Call Student */}
+
         <Pressable
           style={styles.callButton}
           onPress={() => {
-            Linking.openURL(`tel:${lead.phone}`);
+            router.push({
+              pathname: '/dialer',
+              params: {
+                id: lead.id,
+              },
+            });
           }}
         >
-          <Text style={styles.callIcon}>📞</Text>
-          <Text style={styles.callButtonText}>Call Lead</Text>
+          <Text style={styles.callIcon}>
+            📞
+          </Text>
+
+          <Text style={styles.callButtonText}>
+            Call Student
+          </Text>
         </Pressable>
-        
+
+        {/* Call Outcome */}
+
         <Pressable
-          style={styles.completedButton}
+          style={styles.outcomeButton}
           onPress={() => {
             router.push({
               pathname: '/call-outcome',
@@ -130,8 +270,12 @@ export default function LeadDetailsScreen() {
             });
           }}
         >
-          <Text style={styles.completedButtonText}>
-            Call Completed
+          <Text style={styles.outcomeButtonText}>
+            Record Call Outcome
+          </Text>
+
+          <Text style={styles.outcomeChevron}>
+            ›
           </Text>
         </Pressable>
       </ScrollView>
@@ -210,17 +354,11 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
-  },
-
-  company: {
-    marginTop: 5,
-    fontSize: 14,
-    color: '#6B7280',
+    textAlign: 'center',
   },
 
   statusBadge: {
     marginTop: 12,
-    backgroundColor: '#FEF3C7',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 10,
@@ -229,7 +367,70 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+
+  pendingStatus: {
+    backgroundColor: '#FEF3C7',
+  },
+
+  pendingStatusText: {
     color: '#92400E',
+  },
+
+  interestedStatus: {
+    backgroundColor: '#ECFDF5',
+  },
+
+  interestedStatusText: {
+    color: '#047857',
+  },
+
+  notInterestedStatus: {
+    backgroundColor: '#FEF2F2',
+  },
+
+  notInterestedStatusText: {
+    color: '#B91C1C',
+  },
+
+  noAnswerStatus: {
+    backgroundColor: '#F3F4F6',
+  },
+
+  noAnswerStatusText: {
+    color: '#4B5563',
+  },
+
+  busyStatus: {
+    backgroundColor: '#FFF7ED',
+  },
+
+  busyStatusText: {
+    color: '#C2410C',
+  },
+
+  callBackStatus: {
+    backgroundColor: '#EFF6FF',
+  },
+
+  callBackStatusText: {
+    color: '#1D4ED8',
+  },
+
+  wrongNumberStatus: {
+    backgroundColor: '#FEF2F2',
+  },
+
+  wrongNumberStatusText: {
+    color: '#DC2626',
+  },
+
+  defaultStatus: {
+    backgroundColor: '#F3F4F6',
+  },
+
+  defaultStatusText: {
+    color: '#374151',
   },
 
   sectionTitle: {
@@ -250,8 +451,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
 
   infoIcon: {
@@ -285,6 +484,24 @@ const styles = StyleSheet.create({
   notesText: {
     fontSize: 14,
     color: '#6B7280',
+    lineHeight: 20,
+  },
+
+  followUpCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  followUpIcon: {
+    width: 40,
+    fontSize: 20,
+  },
+
+  followUpContent: {
+    flex: 1,
   },
 
   callButton: {
@@ -308,39 +525,66 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  outcomeButton: {
+    marginTop: 12,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  outcomeButtonText: {
+    color: '#2563EB',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  outcomeChevron: {
+    position: 'absolute',
+    right: 16,
+    fontSize: 24,
+    color: '#2563EB',
+  },
+
+  errorContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  errorIcon: {
+    fontSize: 42,
+    marginBottom: 12,
+  },
+
   errorTitle: {
-    margin: 20,
     fontSize: 20,
     fontWeight: '700',
     color: '#111827',
   },
 
+  errorText: {
+    marginTop: 6,
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+
   backButton: {
-    marginHorizontal: 20,
+    marginTop: 20,
     backgroundColor: '#2563EB',
-    padding: 16,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
     borderRadius: 12,
-    alignItems: 'center',
   },
 
   backButtonText: {
     color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  completedButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#2563EB',
-    borderRadius: 15,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-  },
-  
-  completedButtonText: {
-    color: '#2563EB',
-    fontSize: 16,
     fontWeight: '700',
   },
 });
