@@ -1,3 +1,4 @@
+import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import {
@@ -14,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLeads } from '@/context/LeadContext';
 
 export default function FollowUpDetailsScreen() {
+  const styles = useAppStyles(createStyles);
   const { id } = useLocalSearchParams<{
     id: string;
   }>();
@@ -227,10 +229,10 @@ export default function FollowUpDetailsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: colors.background,
   },
 
   scrollContent: {
@@ -249,7 +251,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -257,14 +259,14 @@ const styles = StyleSheet.create({
   backIcon: {
     fontSize: 32,
     lineHeight: 32,
-    color: '#111827',
+    color: colors.text,
     marginTop: -3,
   },
 
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   headerSpacer: {
@@ -272,7 +274,7 @@ const styles = StyleSheet.create({
   },
 
   studentCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 18,
     padding: 24,
     alignItems: 'center',
@@ -283,7 +285,7 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
@@ -292,24 +294,24 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   studentName: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   phone: {
     marginTop: 6,
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   dateCard: {
     marginTop: 16,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: colors.accentSoft,
     borderRadius: 16,
     padding: 16,
     flexDirection: 'row',
@@ -317,6 +319,7 @@ const styles = StyleSheet.create({
   },
 
   dateIcon: {
+    color: colors.text,
     fontSize: 28,
     marginRight: 14,
   },
@@ -328,19 +331,19 @@ const styles = StyleSheet.create({
   dateLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   dateValue: {
     marginTop: 4,
     fontSize: 17,
     fontWeight: '700',
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   infoCard: {
     marginTop: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 18,
     flexDirection: 'row',
@@ -351,11 +354,11 @@ const styles = StyleSheet.create({
   infoLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   statusBadge: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: colors.accentSoft,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -364,12 +367,12 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   notesCard: {
     marginTop: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 18,
   },
@@ -378,7 +381,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     lineHeight: 21,
-    color: '#374151',
+    color: colors.secondary,
   },
 
   actions: {
@@ -386,30 +389,30 @@ const styles = StyleSheet.create({
   },
 
   callButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
   },
 
   callButtonText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: 15,
     fontWeight: '700',
   },
 
   completeButton: {
     marginTop: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: colors.border,
   },
 
   completeButtonText: {
-    color: '#374151',
+    color: colors.secondary,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -422,6 +425,7 @@ const styles = StyleSheet.create({
   },
 
   errorIcon: {
+    color: colors.text,
     fontSize: 40,
     marginBottom: 12,
   },
@@ -429,19 +433,19 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   backButton: {
     marginTop: 20,
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingHorizontal: 24,
     paddingVertical: 12,
   },
 
   backButtonText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontWeight: '700',
   },
 });

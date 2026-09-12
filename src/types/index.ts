@@ -9,6 +9,8 @@ export type LeadStatus =
   | 'wrong_number';
 
 export type Lead = {
+  batchId?: number | null;
+  batchName?: string;
   id: string;
   name: string;
   phone: string;

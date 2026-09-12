@@ -4,8 +4,11 @@ import React, {
     useEffect,
     useState,
 } from "react";
+import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
+    sessionHeartbeat,
     getCurrentUser,
     getStoredToken,
     LoggedInUser,
@@ -14,6 +17,8 @@ import {
 } from "@/services/auth";
 
 type AuthContextType = {
+  photo: string | null;
+  setPhoto: (photo: string | null) => Promise<void>;
   user: LoggedInUser | null;
   token: string | null;
   loading: boolean;
@@ -36,10 +41,43 @@ export function AuthProvider({
   const [user, setUser] = useState<LoggedInUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savedPhoto, setSavedPhoto] = useState<{ userId: number; uri: string | null } | null>(null);
+  const photo = savedPhoto?.userId === user?.id ? savedPhoto?.uri ?? null : null;
+
+  useEffect(() => {
+    let active = true;
+    if (user) {
+      const userId = user.id;
+      AsyncStorage.getItem(`caller_profile_photo_${userId}`)
+        .then((uri) => { if (active) setSavedPhoto({ userId, uri }); })
+        .catch(() => { if (active) setSavedPhoto(null); });
+    }
+    return () => { active = false; };
+  }, [user?.id]);
+
+  const setPhoto = async (uri: string | null) => {
+    if (!user) return;
+    const key = `caller_profile_photo_${user.id}`;
+    if (uri) await AsyncStorage.setItem(key, uri);
+    else await AsyncStorage.removeItem(key);
+    setSavedPhoto({ userId: user.id, uri });
+  };
 
   useEffect(() => {
     restoreSession();
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    let queue = Promise.resolve();
+    const send = (active: boolean) => {
+      queue = queue.then(() => sessionHeartbeat(token, active)).catch(() => {});
+    };
+    send(AppState.currentState === 'active');
+    const timer = setInterval(() => { if (AppState.currentState === 'active') send(true); }, 30000);
+    const subscription = AppState.addEventListener('change', state => send(state === 'active'));
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [token]);
 
   const restoreSession = async () => {
     try {
@@ -88,6 +126,8 @@ export function AuthProvider({
   return (
     <AuthContext.Provider
       value={{
+        photo,
+        setPhoto,
         user,
         token,
         loading,

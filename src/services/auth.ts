@@ -11,7 +11,10 @@ export type LoggedInUser = {
   role: string;
 };
 
+const SESSION_KEY = "caller_session_id";
+
 type LoginResponse = {
+  session_id: string;
   token: string;
   user: LoggedInUser;
 };
@@ -29,12 +32,14 @@ export async function login(
   });
 
   await SecureStore.setItemAsync(TOKEN_KEY, response.token);
+  await SecureStore.setItemAsync(SESSION_KEY, response.session_id);
 
   return response;
 }
 
-export async function getStoredToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(TOKEN_KEY);
+export async function getStoredToken() {
+  const token = await SecureStore.getItemAsync(TOKEN_KEY);
+  return token;
 }
 
 export async function getCurrentUser(
@@ -46,5 +51,19 @@ export async function getCurrentUser(
 }
 
 export async function logout(): Promise<void> {
+  const token = await getStoredToken();
+  const session_id = await SecureStore.getItemAsync(SESSION_KEY);
+  if (token && session_id) await apiRequest('/mobile/session/', { token, method: 'POST', body: { session_id, action: 'logout', active: false } });
   await SecureStore.deleteItemAsync(TOKEN_KEY);
+  await SecureStore.deleteItemAsync(SESSION_KEY);
+}
+
+export async function sessionHeartbeat(token: string, active: boolean) {
+  let session_id = await SecureStore.getItemAsync(SESSION_KEY);
+  if (!session_id) {
+    const result = await apiRequest<{session_id: string}>('/mobile/session/', {token, method: 'POST', body: {action: 'start'}});
+    session_id = result.session_id;
+    await SecureStore.setItemAsync(SESSION_KEY, session_id);
+  }
+  await apiRequest('/mobile/session/', {token, method: 'POST', body: {session_id, action: 'heartbeat', active}});
 }

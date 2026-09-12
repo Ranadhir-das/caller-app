@@ -1,3 +1,4 @@
+import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 
@@ -19,6 +20,8 @@ import { CallHistory } from '@/types';
 type FilterType = 'all' | CallHistory['outcome'];
 
 export default function HistoryScreen() {
+  const styles = useAppStyles(createStyles);
+  const { colors, mode } = useAppTheme();
   const { callHistory } = useLeads();
 
   const [searchText, setSearchText] = useState('');
@@ -350,10 +353,10 @@ export default function HistoryScreen() {
           🔎
         </Text>
 
-        <TextInput
+        <TextInput keyboardAppearance={mode}
           style={styles.searchInput}
           placeholder="Search name or phone number"
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={colors.placeholder}
           value={searchText}
           onChangeText={setSearchText}
           autoCapitalize="none"
@@ -490,10 +493,10 @@ export default function HistoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingTop: 20,
   },
@@ -501,19 +504,19 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   subtitle: {
     marginTop: 6,
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   searchContainer: {
     marginTop: 16,
     height: 48,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -521,6 +524,7 @@ const styles = StyleSheet.create({
   },
 
   searchIcon: {
+    color: colors.text,
     fontSize: 18,
     marginRight: 8,
   },
@@ -528,7 +532,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: colors.text,
   },
 
   filterWrapper: {
@@ -541,33 +545,33 @@ const styles = StyleSheet.create({
   },
 
   filterButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     paddingHorizontal: 15,
     paddingVertical: 9,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
   },
 
   filterButtonSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
+    backgroundColor: colors.primary,
+    borderColor: colors.accent,
   },
 
   filterText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#4B5563',
+    color: colors.secondary,
   },
 
   filterTextSelected: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
   },
 
   summaryCard: {
     marginTop: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     flexDirection: 'row',
@@ -582,13 +586,13 @@ const styles = StyleSheet.create({
   summaryNumber: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   summaryLabel: {
     marginTop: 4,
     fontSize: 11,
-    color: '#6B7280',
+    color: colors.muted,
     textAlign: 'center',
   },
 
@@ -598,7 +602,7 @@ const styles = StyleSheet.create({
   },
 
   historyCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
@@ -613,7 +617,7 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -621,7 +625,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#374151',
+    color: colors.secondary,
   },
 
   leadInfo: {
@@ -632,13 +636,13 @@ const styles = StyleSheet.create({
   leadName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   phone: {
     marginTop: 4,
     fontSize: 13,
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   outcomeBadge: {
@@ -648,88 +652,90 @@ const styles = StyleSheet.create({
   },
 
   outcomeText: {
+    color: colors.text,
     fontSize: 12,
     fontWeight: '600',
   },
 
   outcomeInterested: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: colors.successSoft,
   },
 
   outcomeInterestedText: {
-    color: '#047857',
+    color: colors.success,
   },
 
   outcomeNotInterested: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.dangerSoft,
   },
 
   outcomeNotInterestedText: {
-    color: '#B91C1C',
+    color: colors.danger,
   },
 
   outcomeNoAnswer: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.surfaceMuted,
   },
 
   outcomeNoAnswerText: {
-    color: '#4B5563',
+    color: colors.secondary,
   },
 
   outcomeBusy: {
-    backgroundColor: '#FFF7ED',
+    backgroundColor: colors.orangeSoft,
   },
 
   outcomeBusyText: {
-    color: '#C2410C',
+    color: colors.orange,
   },
 
   outcomeCallBack: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: colors.accentSoft,
   },
 
   outcomeCallBackText: {
-    color: '#1D4ED8',
+    color: colors.accent,
   },
 
   outcomeWrongNumber: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.dangerSoft,
   },
 
   outcomeWrongNumberText: {
-    color: '#DC2626',
+    color: colors.danger,
   },
 
   notesContainer: {
     marginTop: 14,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: colors.border,
   },
 
   notesLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   notes: {
     marginTop: 4,
     fontSize: 14,
-    color: '#374151',
+    color: colors.secondary,
     lineHeight: 20,
   },
 
   followUpContainer: {
     marginTop: 12,
     padding: 10,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: colors.orangeSoft,
     borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
   },
 
   followUpIcon: {
+    color: colors.text,
     fontSize: 18,
     marginRight: 9,
   },
@@ -737,38 +743,39 @@ const styles = StyleSheet.create({
   followUpLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#9A3412',
+    color: colors.orange,
   },
 
   followUpDate: {
     marginTop: 2,
     fontSize: 13,
     fontWeight: '600',
-    color: '#C2410C',
+    color: colors.orange,
   },
 
   date: {
     marginTop: 12,
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.placeholder,
   },
 
   chevron: {
     marginLeft: 8,
     fontSize: 26,
-    color: '#9CA3AF',
+    color: colors.placeholder,
     fontWeight: '400',
   },
 
   emptyCard: {
     marginTop: 30,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 30,
     alignItems: 'center',
   },
 
   icon: {
+    color: colors.text,
     fontSize: 40,
     marginBottom: 12,
   },
@@ -776,13 +783,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   emptyText: {
     marginTop: 6,
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.muted,
     textAlign: 'center',
     lineHeight: 20,
   },

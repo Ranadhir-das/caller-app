@@ -1,3 +1,4 @@
+import { useAuth } from '@/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
     createContext,
@@ -81,6 +82,8 @@ export function DialerSessionProvider({
 }: {
   children: ReactNode;
 }) {
+  const { user } = useAuth();
+  const storageKey = `${SESSION_STORAGE_KEY}:${user?.id ?? 'signed-out'}`;
   const [session, setSession] =
     useState<DialerSession>(createDefaultSession());
 
@@ -94,7 +97,7 @@ export function DialerSessionProvider({
     const loadSession = async () => {
       try {
         const saved = await AsyncStorage.getItem(
-          SESSION_STORAGE_KEY
+          storageKey
         );
 
         if (saved) {
@@ -134,7 +137,7 @@ export function DialerSessionProvider({
     const saveSession = async () => {
       try {
         await AsyncStorage.setItem(
-          SESSION_STORAGE_KEY,
+          storageKey,
           JSON.stringify(session)
         );
       } catch (error) {

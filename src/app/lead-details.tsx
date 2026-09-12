@@ -1,3 +1,4 @@
+import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   Pressable,
@@ -14,6 +15,7 @@ import { useLeads } from '@/context/LeadContext';
 import { Lead } from '@/types';
 
 export default function LeadDetailsScreen() {
+  const styles = useAppStyles(createStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const { leads } = useLeads();
 
@@ -283,10 +285,10 @@ export default function LeadDetailsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: colors.background,
   },
 
   content: {
@@ -305,21 +307,21 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   backIcon: {
     fontSize: 32,
-    color: '#111827',
+    color: colors.text,
     marginTop: -4,
   },
 
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   headerSpace: {
@@ -328,7 +330,7 @@ const styles = StyleSheet.create({
 
   profileCard: {
     marginTop: 10,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 18,
     padding: 24,
     alignItems: 'center',
@@ -338,7 +340,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: '#DBEAFE',
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -346,14 +348,14 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 30,
     fontWeight: '700',
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   name: {
     marginTop: 14,
     fontSize: 22,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
     textAlign: 'center',
   },
 
@@ -365,72 +367,73 @@ const styles = StyleSheet.create({
   },
 
   statusText: {
+    color: colors.text,
     fontSize: 12,
     fontWeight: '600',
   },
 
   pendingStatus: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: colors.warningSoft,
   },
 
   pendingStatusText: {
-    color: '#92400E',
+    color: colors.warning,
   },
 
   interestedStatus: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: colors.successSoft,
   },
 
   interestedStatusText: {
-    color: '#047857',
+    color: colors.success,
   },
 
   notInterestedStatus: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.dangerSoft,
   },
 
   notInterestedStatusText: {
-    color: '#B91C1C',
+    color: colors.danger,
   },
 
   noAnswerStatus: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.surfaceMuted,
   },
 
   noAnswerStatusText: {
-    color: '#4B5563',
+    color: colors.secondary,
   },
 
   busyStatus: {
-    backgroundColor: '#FFF7ED',
+    backgroundColor: colors.orangeSoft,
   },
 
   busyStatusText: {
-    color: '#C2410C',
+    color: colors.orange,
   },
 
   callBackStatus: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: colors.accentSoft,
   },
 
   callBackStatusText: {
-    color: '#1D4ED8',
+    color: colors.accent,
   },
 
   wrongNumberStatus: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.dangerSoft,
   },
 
   wrongNumberStatusText: {
-    color: '#DC2626',
+    color: colors.danger,
   },
 
   defaultStatus: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.surfaceMuted,
   },
 
   defaultStatusText: {
-    color: '#374151',
+    color: colors.secondary,
   },
 
   sectionTitle: {
@@ -438,11 +441,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   infoCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     paddingHorizontal: 16,
   },
@@ -454,6 +457,7 @@ const styles = StyleSheet.create({
   },
 
   infoIcon: {
+    color: colors.text,
     width: 40,
     fontSize: 20,
   },
@@ -464,18 +468,18 @@ const styles = StyleSheet.create({
 
   infoLabel: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.placeholder,
   },
 
   infoValue: {
     marginTop: 3,
     fontSize: 15,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.secondary,
   },
 
   notesCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     minHeight: 70,
@@ -483,12 +487,12 @@ const styles = StyleSheet.create({
 
   notesText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.muted,
     lineHeight: 20,
   },
 
   followUpCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     flexDirection: 'row',
@@ -496,6 +500,7 @@ const styles = StyleSheet.create({
   },
 
   followUpIcon: {
+    color: colors.text,
     width: 40,
     fontSize: 20,
   },
@@ -508,19 +513,20 @@ const styles = StyleSheet.create({
     marginTop: 25,
     height: 56,
     borderRadius: 16,
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   callIcon: {
+    color: colors.text,
     fontSize: 20,
     marginRight: 8,
   },
 
   callButtonText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -529,16 +535,16 @@ const styles = StyleSheet.create({
     marginTop: 12,
     height: 52,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#2563EB',
+    borderColor: colors.accent,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   outcomeButtonText: {
-    color: '#2563EB',
+    color: colors.accent,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -547,7 +553,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     fontSize: 24,
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   errorContainer: {
@@ -558,6 +564,7 @@ const styles = StyleSheet.create({
   },
 
   errorIcon: {
+    color: colors.text,
     fontSize: 42,
     marginBottom: 12,
   },
@@ -565,26 +572,26 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   errorText: {
     marginTop: 6,
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.muted,
     textAlign: 'center',
   },
 
   backButton: {
     marginTop: 20,
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: 12,
   },
 
   backButtonText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontWeight: '700',
   },
 });

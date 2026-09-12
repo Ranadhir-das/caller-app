@@ -1,3 +1,4 @@
+import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { useAuth } from "@/context/AuthContext";
 import { login } from "@/services/auth";
 import { router } from "expo-router";
@@ -15,6 +16,8 @@ import {
 } from "react-native";
 
 export default function LoginScreen() {
+  const styles = useAppStyles(createStyles);
+  const { colors, mode } = useAppTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -66,7 +69,7 @@ export default function LoginScreen() {
         <View style={styles.form}>
           <Text style={styles.label}>Username</Text>
 
-          <TextInput
+          <TextInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
             style={styles.input}
             placeholder="Enter username"
             value={username}
@@ -78,7 +81,7 @@ export default function LoginScreen() {
 
           <Text style={styles.label}>Password</Text>
 
-          <TextInput
+          <TextInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
             style={styles.input}
             placeholder="Enter password"
             value={password}
@@ -110,10 +113,10 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
   },
 
   content: {
@@ -123,6 +126,7 @@ const styles = StyleSheet.create({
   },
 
   title: {
+    color: colors.text,
     fontSize: 32,
     fontWeight: "700",
     textAlign: "center",
@@ -130,6 +134,7 @@ const styles = StyleSheet.create({
   },
 
   subtitle: {
+    color: colors.text,
     fontSize: 18,
     textAlign: "center",
     marginBottom: 40,
@@ -140,6 +145,7 @@ const styles = StyleSheet.create({
   },
 
   label: {
+    color: colors.text,
     fontSize: 15,
     fontWeight: "600",
     marginBottom: 8,
@@ -147,19 +153,20 @@ const styles = StyleSheet.create({
   },
 
   input: {
+    color: colors.text,
     height: 52,
     borderWidth: 1,
-    borderColor: "#d0d0d0",
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 16,
     fontSize: 16,
-    backgroundColor: "#fafafa",
+    backgroundColor: colors.surfaceMuted,
   },
 
   button: {
     height: 52,
     borderRadius: 10,
-    backgroundColor: "#111111",
+    backgroundColor: colors.primary,
     justifyContent: "center",
     alignItems: "center",
     marginTop: 28,
@@ -170,7 +177,7 @@ const styles = StyleSheet.create({
   },
 
   buttonText: {
-    color: "#ffffff",
+    color: colors.onPrimary,
     fontSize: 16,
     fontWeight: "600",
   },

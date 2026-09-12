@@ -1,8 +1,10 @@
+import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 
 import {
-  FlatList,
+  SectionList,
+  RefreshControl,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,7 +25,10 @@ import { Lead } from '@/types';
 type FilterType = 'all' | Lead['status'];
 
 export default function LeadsScreen() {
-  const { leads } = useLeads();
+  const styles = useAppStyles(createStyles);
+  const { colors, mode } = useAppTheme();
+  const { leads, refresh, refreshing, refreshError } = useLeads();
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const [searchText, setSearchText] = useState('');
   const [selectedFilter, setSelectedFilter] =
@@ -64,6 +69,18 @@ export default function LeadsScreen() {
   }, [leads, searchText, selectedFilter]);
 
 
+  const sections = useMemo(() => {
+    const groups = new Map<string, { key: string; title: string; data: Lead[]; count: number }>();
+    filteredLeads.forEach(lead => {
+      const key = String(lead.batchId ?? 'unbatched');
+      if (!groups.has(key)) groups.set(key, { key, title: lead.batchName || 'Unbatched leads', data: [], count: 0 });
+      const group = groups.get(key)!;
+      group.count++;
+      if (!collapsed.has(key)) group.data.push(lead);
+    });
+    return [...groups.values()];
+  }, [filteredLeads, collapsed]);
+
   const renderLead = ({ item }: { item: Lead }) => {
 
     return (
@@ -89,9 +106,7 @@ export default function LeadsScreen() {
             {item.name}
           </Text>
 
-          <Text style={styles.phone}>
-            📞 {item.phone}
-          </Text>
+          <Text style={styles.phone}>{item.phone}</Text>
         </View>
 
         <View
@@ -100,8 +115,8 @@ export default function LeadsScreen() {
             {
               backgroundColor:
                 item.status === 'pending'
-                  ? '#FEF3C7'
-                  : `${getStatusColor(item.status)}18`,
+                  ? colors.warningSoft
+                  : `${getStatusColor(item.status, mode)}18`,
             },
           ]}
         >
@@ -109,7 +124,7 @@ export default function LeadsScreen() {
             style={[
               styles.statusText,
               {
-                color: getStatusColor(item.status),
+                color: getStatusColor(item.status, mode),
               },
             ]}
           >
@@ -117,9 +132,7 @@ export default function LeadsScreen() {
           </Text>
         </View>
 
-        <Text style={styles.chevron}>
-          ›
-        </Text>
+        <View style={{ width: 8, height: 8, borderTopWidth: 2, borderRightWidth: 2, borderColor: colors.muted, transform: [{ rotate: "45deg" }], marginLeft: 8 }} />
       </Pressable>
     );
   };
@@ -146,17 +159,16 @@ export default function LeadsScreen() {
         </View>
       </View>
 
+      {refreshError && <Text style={{ color: colors.danger, marginBottom: 12 }}>{refreshError}</Text>}
       {/* Search */}
 
       <View style={styles.searchContainer}>
-        <Text style={styles.searchIcon}>
-          🔎
-        </Text>
+        <View style={{ width: 16, height: 16, borderWidth: 2, borderColor: colors.muted, borderRadius: 8, marginRight: 12 }}><View style={{ position: "absolute", width: 7, height: 2, backgroundColor: colors.muted, right: -5, bottom: -3, transform: [{ rotate: "45deg" }] }} /></View>
 
-        <TextInput
+        <TextInput keyboardAppearance={mode}
           style={styles.searchInput}
           placeholder="Search name or phone number"
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={colors.placeholder}
           value={searchText}
           onChangeText={setSearchText}
           autoCapitalize="none"
@@ -243,10 +255,8 @@ export default function LeadsScreen() {
       {/* Student List */}
 
       {leads.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyIcon}>
-            👥
-          </Text>
+        <ScrollView contentContainerStyle={styles.emptyCard} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} />} >
+
 
           <Text style={styles.emptyTitle}>
             No students assigned
@@ -256,12 +266,10 @@ export default function LeadsScreen() {
             Students assigned by the admin will
             appear here.
           </Text>
-        </View>
+        </ScrollView>
       ) : filteredLeads.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyIcon}>
-            🔎
-          </Text>
+        <ScrollView contentContainerStyle={styles.emptyCard} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} />} >
+
 
           <Text style={styles.emptyTitle}>
             No students found
@@ -271,10 +279,21 @@ export default function LeadsScreen() {
             Try changing the search or selected
             filter.
           </Text>
-        </View>
+        </ScrollView>
       ) : (
-        <FlatList
-          data={filteredLeads}
+        <SectionList
+          sections={sections}
+          refreshing={refreshing}
+          onRefresh={refresh}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => (
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: !collapsed.has(section.key) }}
+              onPress={() => setCollapsed(current => { const next = new Set(current); if (next.has(section.key)) next.delete(section.key); else next.add(section.key); return next; })}
+              style={{ padding: 16, borderRadius: 14, backgroundColor: colors.accentSoft, marginBottom: 10 }}>
+              <Text style={{ color: colors.accent, fontSize: 16, fontWeight: '700' }}>{section.title} ({section.count})</Text>
+              <Text style={{ color: colors.secondary, marginTop: 4 }}>{collapsed.has(section.key) ? 'Tap to show leads' : 'Tap to collapse'}{section.key !== 'unbatched' ? ` - Batch #${section.key}` : ''}</Text>
+            </Pressable>
+          )}
           keyExtractor={(item) => item.id}
           renderItem={renderLead}
           showsVerticalScrollIndicator={false}
@@ -285,10 +304,10 @@ export default function LeadsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: colors.background,
     paddingHorizontal: 20,
   },
 
@@ -303,33 +322,33 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   subtitle: {
     marginTop: 5,
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   countBadge: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
 
   countText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
 
   searchContainer: {
     height: 48,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -337,6 +356,7 @@ const styles = StyleSheet.create({
   },
 
   searchIcon: {
+    color: colors.text,
     fontSize: 18,
     marginRight: 8,
   },
@@ -344,7 +364,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: colors.text,
   },
 
   filterWrapper: {
@@ -357,33 +377,33 @@ const styles = StyleSheet.create({
   },
 
   filterButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     paddingHorizontal: 15,
     paddingVertical: 9,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
   },
 
   filterButtonSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
+    backgroundColor: colors.primary,
+    borderColor: colors.accent,
   },
 
   filterText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#4B5563',
+    color: colors.secondary,
   },
 
   filterTextSelected: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
   },
 
   summaryCard: {
     marginTop: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     paddingVertical: 15,
     flexDirection: 'row',
@@ -398,19 +418,19 @@ const styles = StyleSheet.create({
   summaryNumber: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   summaryLabel: {
     marginTop: 3,
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   summaryDivider: {
     width: 1,
     height: 32,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.border,
   },
 
   list: {
@@ -419,7 +439,7 @@ const styles = StyleSheet.create({
   },
 
   leadCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
@@ -431,7 +451,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#DBEAFE',
+    backgroundColor: colors.accentSoft,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -439,7 +459,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   leadInfo: {
@@ -451,13 +471,13 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   phone: {
     marginTop: 5,
     fontSize: 13,
-    color: '#374151',
+    color: colors.secondary,
   },
 
   status: {
@@ -467,6 +487,7 @@ const styles = StyleSheet.create({
   },
 
   statusText: {
+    color: colors.text,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -474,19 +495,20 @@ const styles = StyleSheet.create({
   chevron: {
     marginLeft: 7,
     fontSize: 25,
-    color: '#9CA3AF',
+    color: colors.placeholder,
     fontWeight: '400',
   },
 
   emptyCard: {
     marginTop: 25,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 30,
     alignItems: 'center',
   },
 
   emptyIcon: {
+    color: colors.text,
     fontSize: 40,
     marginBottom: 12,
   },
@@ -494,13 +516,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   emptyText: {
     marginTop: 6,
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.muted,
     textAlign: 'center',
     lineHeight: 20,
   },

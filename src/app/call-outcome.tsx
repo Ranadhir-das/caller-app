@@ -1,3 +1,4 @@
+import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { getStoredToken } from '@/services/auth';
 import { useDialerSession } from '@/context/DialerSessionContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -50,7 +51,19 @@ const outcomeToBackend: Record<string, BackendOutcome> = {
 };
 
 export default function CallOutcomeScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const styles = useAppStyles(createStyles);
+  const { colors, mode } = useAppTheme();
+  const {
+    id,
+    started_at,
+    ended_at,
+    duration_seconds,
+  } = useLocalSearchParams<{
+    id: string;
+    started_at?: string;
+    ended_at?: string;
+    duration_seconds?: string;
+  }>();
 
   const {
     leads,
@@ -192,6 +205,53 @@ export default function CallOutcomeScreen() {
       const backendOutcome =
         outcomeToBackend[selectedOutcome];
 
+      /*
+       * Timing comes from the real Android call lifecycle:
+       * OFFHOOK -> started_at
+       * IDLE    -> ended_at
+       */
+      const callStartedAt = Array.isArray(started_at)
+        ? started_at[0]
+        : started_at;
+
+      const callEndedAt = Array.isArray(ended_at)
+        ? ended_at[0]
+        : ended_at;
+
+      const durationParam = Array.isArray(duration_seconds)
+        ? duration_seconds[0]
+        : duration_seconds;
+
+      const callDurationSeconds =
+        durationParam !== undefined &&
+        durationParam !== ''
+          ? Number(durationParam)
+          : callStartedAt && callEndedAt
+            ? Math.max(
+                0,
+                Math.round(
+                  (new Date(callEndedAt).getTime() -
+                    new Date(callStartedAt).getTime()) /
+                    1000
+                )
+              )
+            : 0;
+
+      if (!callStartedAt || !callEndedAt) {
+        throw new Error(
+          'Call timing information is missing. Please make the call again.'
+        );
+      }
+
+      if (
+        !Number.isFinite(callDurationSeconds) ||
+        callDurationSeconds < 0
+      ) {
+        throw new Error(
+          'Invalid call duration. Please make the call again.'
+        );
+      }
+
       if (!backendOutcome) {
         throw new Error('Invalid call outcome.');
       }
@@ -217,11 +277,19 @@ export default function CallOutcomeScreen() {
       const callPayload: {
         lead: number;
         outcome: BackendOutcome;
+        started_at: string;
+        ended_at: string;
+        duration_seconds: number;
         notes: string;
         callback_at?: string;
       } = {
         lead: leadId,
         outcome: backendOutcome,
+        started_at: callStartedAt,
+        ended_at: callEndedAt,
+        duration_seconds: Math.round(
+          callDurationSeconds
+        ),
         notes: notes.trim(),
       };
 
@@ -308,7 +376,7 @@ export default function CallOutcomeScreen() {
         phone: lead.phone,
         outcome: mobileStatus,
         notes: notes.trim(),
-        calledAt: new Date().toISOString(),
+        calledAt: callEndedAt,
 
         ...(savedFollowUpDate
           ? {
@@ -470,10 +538,10 @@ export default function CallOutcomeScreen() {
           Notes
         </Text>
 
-        <TextInput
+        <TextInput keyboardAppearance={mode}
           style={styles.notesInput}
           placeholder="Add notes about this call..."
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.placeholder}
           value={notes}
           onChangeText={setNotes}
           multiline
@@ -548,7 +616,7 @@ export default function CallOutcomeScreen() {
             )}
 
             {showDatePicker && (
-              <DateTimePicker
+              <DateTimePicker themeVariant={mode}
                 value={
                   followUpDate || new Date()
                 }
@@ -564,7 +632,7 @@ export default function CallOutcomeScreen() {
             )}
 
             {showTimePicker && (
-              <DateTimePicker
+              <DateTimePicker themeVariant={mode}
                 value={
                   followUpDate || new Date()
                 }
@@ -601,10 +669,10 @@ export default function CallOutcomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: colors.background,
   },
 
   content: {
@@ -623,21 +691,21 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   backIcon: {
     fontSize: 28,
-    color: '#222',
+    color: colors.text,
     marginTop: -3,
   },
 
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#111',
+    color: colors.text,
   },
 
   headerSpace: {
@@ -645,7 +713,7 @@ const styles = StyleSheet.create({
   },
 
   leadCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     flexDirection: 'row',
@@ -657,7 +725,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#E8F0FE',
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -666,7 +734,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 21,
     fontWeight: '700',
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   leadInfo: {
@@ -676,19 +744,19 @@ const styles = StyleSheet.create({
   leadName: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111',
+    color: colors.text,
     marginBottom: 2,
   },
 
   phone: {
     fontSize: 14,
-    color: '#333',
+    color: colors.secondary,
   },
 
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111',
+    color: colors.text,
     marginBottom: 9,
   },
 
@@ -702,7 +770,7 @@ const styles = StyleSheet.create({
   outcomeCard: {
     width: '48%',
     minHeight: 65,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 11,
     paddingVertical: 8,
     paddingHorizontal: 8,
@@ -711,15 +779,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 7,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
   },
 
   outcomeCardSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
   },
 
   outcomeIcon: {
+    color: colors.text,
     fontSize: 19,
     marginRight: 7,
   },
@@ -727,28 +796,28 @@ const styles = StyleSheet.create({
   outcomeText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#444',
+    color: colors.secondary,
     textAlign: 'center',
   },
 
   outcomeTextSelected: {
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   notesInput: {
     minHeight: 82,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 13,
     padding: 12,
     fontSize: 14,
-    color: '#222',
+    color: colors.text,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
     marginBottom: 14,
   },
 
   followUpCard: {
-    backgroundColor: '#FFF7ED',
+    backgroundColor: colors.orangeSoft,
     borderRadius: 13,
     padding: 12,
     marginBottom: 14,
@@ -757,15 +826,15 @@ const styles = StyleSheet.create({
   followUpTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#C2410C',
+    color: colors.orange,
     marginBottom: 8,
   },
 
   dateButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#FED7AA',
+    borderColor: colors.border,
     minHeight: 44,
     paddingHorizontal: 12,
     flexDirection: 'row',
@@ -779,23 +848,24 @@ const styles = StyleSheet.create({
 
   dateButtonText: {
     fontSize: 14,
-    color: '#333',
+    color: colors.secondary,
     fontWeight: '500',
   },
 
   calendarIcon: {
+    color: colors.text,
     fontSize: 18,
   },
 
   followUpPreview: {
     marginTop: 9,
     fontSize: 13,
-    color: '#9A3412',
+    color: colors.orange,
     fontWeight: '600',
   },
 
   saveButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     borderRadius: 13,
     paddingVertical: 14,
     alignItems: 'center',
@@ -803,11 +873,11 @@ const styles = StyleSheet.create({
   },
 
   saveButtonDisabled: {
-    backgroundColor: '#AFC3E8',
+    backgroundColor: colors.disabled,
   },
 
   saveButtonText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -817,11 +887,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginTop: 50,
-    color: '#111',
+    color: colors.text,
   },
 
   backButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     marginHorizontal: 30,
     marginTop: 20,
     padding: 15,
@@ -830,7 +900,7 @@ const styles = StyleSheet.create({
   },
 
   backButtonText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontWeight: '700',
   },
 });

@@ -1,11 +1,41 @@
+import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { router } from 'expo-router';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, AppState, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useDialerSession } from '@/context/DialerSessionContext';
 import { useLeads } from '@/context/LeadContext';
+import { useAuth } from '@/context/AuthContext';
+import { LeadPieChart } from '@/components/LeadPieChart';
+import { CallerAvatar } from '@/components/CallerAvatar';
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export default function HomeScreen() {
+  const styles = useAppStyles(createStyles);
+  const { colors } = useAppTheme();
+  const { user } = useAuth();
+  const displayName = user?.name?.trim() || user?.username || 'Caller';
+  const [greeting, setGreeting] = useState(getGreeting);
+
+  useEffect(() => {
+    const refreshGreeting = () => setGreeting(getGreeting());
+    const timer = setInterval(refreshGreeting, 60_000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshGreeting();
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, []);
+
   const { leads, callHistory, getUpcomingFollowUps, getOverdueFollowUps } = useLeads();
   const recentActivity = callHistory
     .slice()
@@ -73,14 +103,14 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
       >
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Good morning 👋</Text>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={styles.greeting}>{greeting}, {displayName}</Text>
           <Text style={styles.title}>Caller Dashboard</Text>
         </View>
 
-        <View style={styles.profileCircle}>
-          <Text style={styles.profileText}>C</Text>
-        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={() => router.push('/(tabs)/more')}>
+          <CallerAvatar />
+        </Pressable>
       </View>
 
       <View style={styles.statsContainer}>
@@ -107,6 +137,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      <LeadPieChart leads={leads} />
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
 
@@ -468,12 +499,12 @@ export default function HomeScreen() {
                       {
                         backgroundColor:
                           call.outcome === 'interested'
-                            ? '#DCFCE7'
+                            ? colors.successSoft
                             : call.outcome === 'not_interested'
-                            ? '#FEE2E2'
+                            ? colors.dangerSoft
                             : call.outcome === 'call_back'
-                            ? '#FEF3C7'
-                            : '#E5E7EB',
+                            ? colors.warningSoft
+                            : colors.surfaceMuted,
                       },
                     ]}
                   >
@@ -614,10 +645,10 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: colors.background,
     paddingHorizontal: 20,
   },
 
@@ -626,32 +657,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 16,
-    paddingBottom: 24,
+    paddingBottom: 12,
   },
 
   greeting: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.muted,
     marginBottom: 4,
   },
 
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   profileCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   profileText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: 18,
     fontWeight: '700',
   },
@@ -659,27 +690,27 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 28,
+    marginBottom: 12,
   },
 
   statCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 14,
-    paddingVertical: 18,
+    paddingVertical: 10,
     alignItems: 'center',
   },
 
   statNumber: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
     marginBottom: 5,
   },
 
   statLabel: {
     fontSize: 11,
-    color: '#6B7280',
+    color: colors.muted,
     textAlign: 'center',
   },
 
@@ -690,12 +721,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
     marginBottom: 12,
   },
 
   startButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     borderRadius: 14,
     paddingVertical: 17,
     alignItems: 'center',
@@ -703,7 +734,7 @@ const styles = StyleSheet.create({
   },
 
   startButtonText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -715,13 +746,14 @@ const styles = StyleSheet.create({
 
   actionCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     paddingVertical: 20,
     alignItems: 'center',
   },
 
   actionIcon: {
+    color: colors.text,
     fontSize: 24,
     marginBottom: 8,
   },
@@ -729,11 +761,11 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.secondary,
   },
 
   progressCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 18,
   },
@@ -741,14 +773,14 @@ const styles = StyleSheet.create({
   progressTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: colors.text,
     marginBottom: 6,
   },
 
   progressSubtitle: {
     fontSize: 13,
     lineHeight: 19,
-    color: '#6B7280',
+    color: colors.muted,
   },
   progressHeader: {
   flexDirection: 'row',
@@ -761,25 +793,26 @@ progressBar: {
   width: '100%',
   height: 10,
   borderRadius: 5,
-  backgroundColor: '#E5E7EB',
+  backgroundColor: colors.border,
   overflow: 'hidden',
 },
 
 progressFill: {
   height: '100%',
   borderRadius: 5,
-  backgroundColor: '#2563EB',
+  backgroundColor: colors.primary,
 },
 
 progressPercentage: {
+    color: colors.text,
   fontSize: 16,
   fontWeight: '700',
 },
 
 remainingText: {
+    color: colors.muted,
   marginTop: 10,
   fontSize: 13,
-  opacity: 0.6,
 },
 
 sessionHeader: {
@@ -796,25 +829,25 @@ sessionStatus: {
 },
 
 sessionActive: {
-  backgroundColor: '#DCFCE7',
+  backgroundColor: colors.successSoft,
 },
 
 sessionPaused: {
-  backgroundColor: '#FEF3C7',
+  backgroundColor: colors.warningSoft,
 },
 
 sessionStopped: {
-  backgroundColor: '#FEE2E2',
+  backgroundColor: colors.dangerSoft,
 },
 
 sessionStatusText: {
   fontSize: 11,
   fontWeight: '700',
-  color: '#374151',
+  color: colors.secondary,
 },
 
 sessionCard: {
-  backgroundColor: '#FFFFFF',
+  backgroundColor: colors.surface,
   borderRadius: 14,
   padding: 18,
 },
@@ -823,19 +856,19 @@ sessionMainStat: {
   alignItems: 'center',
   paddingBottom: 16,
   borderBottomWidth: 1,
-  borderBottomColor: '#F0F0F0',
+  borderBottomColor: colors.border,
 },
 
 sessionMainNumber: {
   fontSize: 32,
   fontWeight: '800',
-  color: '#2563EB',
+  color: colors.accent,
 },
 
 sessionMainLabel: {
   marginTop: 3,
   fontSize: 13,
-  color: '#6B7280',
+  color: colors.muted,
 },
 
 sessionGrid: {
@@ -853,12 +886,12 @@ sessionStat: {
 sessionStatNumber: {
   fontSize: 19,
   fontWeight: '700',
-  color: '#111827',
+  color: colors.text,
 },
 
 sessionStatLabel: {
   fontSize: 10,
-  color: '#6B7280',
+  color: colors.muted,
   textAlign: 'center',
   marginTop: 3,
 },
@@ -877,11 +910,11 @@ sessionStatLabel: {
     marginTop: -6,
     marginBottom: 12,
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   overdueBadge: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: colors.dangerSoft,
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -890,7 +923,7 @@ sessionStatLabel: {
   overdueBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#B91C1C',
+    color: colors.danger,
   },
 
   followUpList: {
@@ -899,7 +932,7 @@ sessionStatLabel: {
 
   followUpCard: {
     width: 320,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     marginRight: 12,
@@ -914,7 +947,7 @@ sessionStatLabel: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -922,7 +955,7 @@ sessionStatLabel: {
   followUpAvatarText: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   followUpStudentInfo: {
@@ -933,29 +966,30 @@ sessionStatLabel: {
   followUpStudentName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   followUpPhone: {
     marginTop: 4,
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.muted,
   },
 
   followUpDateBox: {
     marginTop: 14,
     padding: 10,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: colors.accentSoft,
     borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
   },
 
   overdueDateBox: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: colors.dangerSoft,
   },
 
   followUpDateIcon: {
+    color: colors.text,
     fontSize: 18,
     marginRight: 9,
   },
@@ -963,46 +997,47 @@ sessionStatLabel: {
   followUpDateLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#1D4ED8',
+    color: colors.accent,
   },
 
   overdueDateLabel: {
-    color: '#B91C1C',
+    color: colors.danger,
   },
 
   followUpDateText: {
     marginTop: 2,
     fontSize: 13,
     fontWeight: '700',
-    color: '#2563EB',
+    color: colors.accent,
   },
 
   overdueDateText: {
-    color: '#DC2626',
+    color: colors.danger,
   },
 
   followUpCallButton: {
     marginTop: 12,
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 11,
     alignItems: 'center',
   },
 
   followUpCallButtonText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
 
   noFollowUpCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
   },
 
   noFollowUpIcon: {
+    color: colors.text,
     fontSize: 32,
     marginBottom: 8,
   },
@@ -1010,13 +1045,13 @@ sessionStatLabel: {
   noFollowUpTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
 
   noFollowUpText: {
     marginTop: 5,
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.muted,
     textAlign: 'center',
     lineHeight: 18,
   },
@@ -1029,12 +1064,13 @@ sectionHeader: {
 },
 
 sectionSubtitle: {
+    color: colors.muted,
   marginTop: 3,
   fontSize: 13,
-  opacity: 0.6,
 },
 
 viewAllText: {
+    color: colors.text,
   fontSize: 14,
   fontWeight: '600',
 },
@@ -1043,18 +1079,19 @@ emptyCard: {
   padding: 20,
   borderRadius: 16,
   alignItems: 'center',
-  backgroundColor: '#F3F4F6',
+  backgroundColor: colors.surfaceMuted,
 },
 
 emptyCardTitle: {
+    color: colors.text,
   fontSize: 15,
   fontWeight: '600',
 },
 
 emptyCardText: {
+    color: colors.muted,
   marginTop: 5,
   fontSize: 13,
-  opacity: 0.6,
 },
 
 activityList: {
@@ -1066,7 +1103,7 @@ activityCard: {
   alignItems: 'center',
   padding: 14,
   borderRadius: 16,
-  backgroundColor: '#F8FAFC',
+  backgroundColor: colors.background,
 },
 
 activityAvatar: {
@@ -1075,10 +1112,11 @@ activityAvatar: {
   borderRadius: 22,
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: '#E5E7EB',
+  backgroundColor: colors.border,
 },
 
 activityAvatarText: {
+    color: colors.text,
   fontSize: 13,
   fontWeight: '700',
 },
@@ -1089,20 +1127,21 @@ activityContent: {
 },
 
 activityName: {
+    color: colors.text,
   fontSize: 15,
   fontWeight: '700',
 },
 
 activityPhone: {
+    color: colors.muted,
   marginTop: 2,
   fontSize: 12,
-  opacity: 0.6,
 },
 
 activityTime: {
+    color: colors.muted,
   marginTop: 3,
   fontSize: 11,
-  opacity: 0.5,
 },
 
 activityRight: {
@@ -1117,20 +1156,22 @@ outcomeBadge: {
 },
 
 outcomeBadgeText: {
+    color: colors.text,
   fontSize: 10,
   fontWeight: '700',
 },
 
 chevron: {
+    color: colors.muted,
   marginTop: 4,
   fontSize: 22,
-  opacity: 0.4,
 },
 scrollContent: {
   paddingBottom: 32,
 },
 
 progressText: {
+    color: colors.text,
   fontSize: 14,
   fontWeight: '600',
 },

@@ -1,11 +1,11 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { useColorScheme } from 'react-native';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 import { Colors } from '@/constants/theme';
 
 export default function AppTabs() {
   const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
+  const colors = Colors[scheme];
 
   return (
     <NativeTabs
@@ -16,32 +16,32 @@ export default function AppTabs() {
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
+          md="home"
+          sf="house.fill"
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="leads">
         <NativeTabs.Trigger.Label>Leads</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          md="group"
+          sf="person.2.fill"
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="history">
         <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          md="history"
+          sf="clock.arrow.circlepath"
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="more">
         <NativeTabs.Trigger.Label>More</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          md="more_horiz"
+          sf="ellipsis.circle"
         />
       </NativeTabs.Trigger>
     </NativeTabs>

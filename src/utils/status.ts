@@ -34,8 +34,17 @@ export function getStatusLabel(
 }
 
 export function getStatusColor(
-  status: LeadStatus
+  status: LeadStatus,
+  mode: 'light' | 'dark' = 'light'
 ): string {
+  if (mode === 'dark') {
+    const colors: Record<LeadStatus, string> = {
+      interested: '#78DBB9', not_interested: '#F4A4BB', no_answer: '#E9BF70',
+      busy: '#C2A7FF', call_back: '#BEAEFF', wrong_number: '#B4BED0',
+      called: '#78DBB9', pending: '#E9BF70',
+    };
+    return colors[status];
+  }
   switch (status) {
     case 'interested':
       return '#16A34A';

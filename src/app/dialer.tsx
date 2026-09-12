@@ -1,3 +1,4 @@
+import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { useDialerSession } from '@/context/DialerSessionContext';
 import { useLeads } from '@/context/LeadContext';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -17,6 +18,7 @@ import CallstateModule, {
 } from '../../modules/callstate/src/CallstateModule';
 
 export default function DialerScreen() {
+  const styles = useAppStyles(createStyles);
   const { leads } = useLeads();
 
   const {
@@ -67,6 +69,16 @@ export default function DialerScreen() {
   const monitoringStartedRef =
     useRef(false);
 
+  // Timing for the current phone call only.
+  const callStartedAtRef =
+    useRef<string | null>(null);
+
+  const callEndedAtRef =
+    useRef<string | null>(null);
+
+  const callDurationSecondsRef =
+    useRef<number>(0);
+
   const appStateRef =
     useRef(AppState.currentState);
 
@@ -93,6 +105,13 @@ export default function DialerScreen() {
       pathname: '/call-outcome',
       params: {
         id: currentLead.id,
+        started_at: callStartedAtRef.current ?? '',
+        ended_at:
+          callEndedAtRef.current ??
+          new Date().toISOString(),
+        duration_seconds: String(
+          callDurationSecondsRef.current
+        ),
       },
     });
   };
@@ -120,6 +139,16 @@ export default function DialerScreen() {
           if (event.state === 'OFFHOOK') {
             callWasStartedRef.current = true;
 
+            if (!callStartedAtRef.current) {
+              callStartedAtRef.current =
+                new Date().toISOString();
+
+              console.log(
+                'DIALER: Call started at:',
+                callStartedAtRef.current
+              );
+            }
+
             setCallStarted(true);
 
             console.log(
@@ -140,6 +169,42 @@ export default function DialerScreen() {
           ) {
             console.log(
               'DIALER: Call state became IDLE'
+            );
+
+
+
+            callEndedAtRef.current =
+              new Date().toISOString();
+
+            if (callStartedAtRef.current) {
+              const startedMs =
+                new Date(
+                  callStartedAtRef.current
+                ).getTime();
+
+              const endedMs =
+                new Date(
+                  callEndedAtRef.current
+                ).getTime();
+
+              callDurationSecondsRef.current =
+                Math.max(
+                  0,
+                  Math.round(
+                    (endedMs - startedMs) / 1000
+                  )
+                );
+            }
+
+            console.log(
+              'DIALER: Call ended at:',
+              callEndedAtRef.current
+            );
+
+            console.log(
+              'DIALER: Call duration:',
+              callDurationSecondsRef.current,
+              'seconds'
             );
 
             openCallOutcome();
@@ -245,6 +310,31 @@ export default function DialerScreen() {
                   'DIALER: Phone is idle - opening outcome'
                 );
 
+                if (!callEndedAtRef.current) {
+                  callEndedAtRef.current =
+                    new Date().toISOString();
+
+                  if (callStartedAtRef.current) {
+                    const startedMs =
+                      new Date(
+                        callStartedAtRef.current
+                      ).getTime();
+
+                    const endedMs =
+                      new Date(
+                        callEndedAtRef.current
+                      ).getTime();
+
+                    callDurationSecondsRef.current =
+                      Math.max(
+                        0,
+                        Math.round(
+                          (endedMs - startedMs) / 1000
+                        )
+                      );
+                  }
+                }
+
                 setTimeout(() => {
                   openCallOutcome();
                 }, 500);
@@ -272,51 +362,51 @@ export default function DialerScreen() {
     if (!currentLead) {
       return;
     }
-  
+
     if (callStarted) {
       return;
     }
-  
+
     if (isPaused) {
       return;
     }
-  
+
     // Reset countdown whenever a new student starts.
     setCountdown(3);
-  
+
     // Prevent duplicate interval.
     if (countdownRef.current) {
       clearInterval(countdownRef.current);
       countdownRef.current = null;
     }
-  
+
     console.log(
       'DIALER: Starting countdown for:',
       currentLead.name
     );
-  
+
     countdownRef.current = setInterval(() => {
       setCountdown((previous) => {
         console.log(
           'DIALER COUNTDOWN:',
           previous
         );
-  
+
         if (previous <= 1) {
           if (countdownRef.current) {
             clearInterval(countdownRef.current);
             countdownRef.current = null;
           }
-  
+
           startCall();
-  
+
           return 0;
         }
-  
+
         return previous - 1;
       });
     }, 1000);
-  
+
     return () => {
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
@@ -412,6 +502,11 @@ export default function DialerScreen() {
       'STARTING CALL:',
       currentLead.phone
     );
+
+    // Clear timing from any previous call.
+    callStartedAtRef.current = null;
+    callEndedAtRef.current = null;
+    callDurationSecondsRef.current = 0;
 
     try {
       // Do NOT set callWasStartedRef here.
@@ -741,14 +836,16 @@ export default function DialerScreen() {
 // STYLES
 // --------------------------------------------------
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppColors) => StyleSheet.create({
   container: {
+    backgroundColor: colors.background,
     flex: 1,
     padding: 24,
     justifyContent: 'center',
   },
 
   header: {
+    color: colors.text,
     fontSize: 28,
     fontWeight: '800',
     textAlign: 'center',
@@ -760,11 +857,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.border,
     marginBottom: 20,
   },
 
   positionText: {
+    color: colors.text,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -772,27 +870,28 @@ const styles = StyleSheet.create({
   studentCard: {
     padding: 24,
     borderRadius: 18,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     marginBottom: 30,
   },
 
   studentName: {
+    color: colors.text,
     fontSize: 25,
     fontWeight: '800',
     textAlign: 'center',
   },
 
   phoneNumber: {
+    color: colors.muted,
     fontSize: 18,
     marginTop: 8,
-    opacity: 0.6,
   },
 
   statusLabel: {
+    color: colors.muted,
     textAlign: 'center',
     fontSize: 16,
-    opacity: 0.6,
   },
 
   countdown: {
@@ -800,10 +899,11 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'center',
     marginVertical: 12,
-    color: '#ffffff',
+    color: colors.accent,
   },
 
   pausedText: {
+    color: colors.text,
     fontSize: 40,
     fontWeight: '800',
     textAlign: 'center',
@@ -820,7 +920,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 16,
     borderRadius: 12,
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#885500',
     alignItems: 'center',
   },
 
@@ -828,7 +928,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 16,
     borderRadius: 12,
-    backgroundColor: '#16A34A',
+    backgroundColor: '#187452',
     alignItems: 'center',
   },
 
@@ -841,7 +941,7 @@ const styles = StyleSheet.create({
   },
 
   controlText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -855,7 +955,7 @@ const styles = StyleSheet.create({
   },
 
   stopButtonText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -866,37 +966,41 @@ const styles = StyleSheet.create({
   },
 
   callingIcon: {
+    color: colors.text,
     fontSize: 55,
     marginBottom: 12,
   },
 
   callingText: {
+    color: colors.text,
     fontSize: 24,
     fontWeight: '800',
   },
 
   callState: {
+    color: colors.text,
     fontSize: 18,
     fontWeight: '700',
     marginTop: 10,
   },
 
   infoText: {
+    color: colors.muted,
     fontSize: 14,
-    opacity: 0.6,
     marginTop: 15,
     textAlign: 'center',
   },
 
   title: {
+    color: colors.text,
     fontSize: 28,
     fontWeight: '800',
     textAlign: 'center',
   },
 
   subtitle: {
+    color: colors.muted,
     fontSize: 16,
-    opacity: 0.6,
     textAlign: 'center',
     marginTop: 10,
   },

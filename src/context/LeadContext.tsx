@@ -4,12 +4,10 @@ import React, {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from 'react';
-
-import {
-  loadCallHistory,
-  saveCallHistory,
-} from '@/services/storage';
+import { AppState } from 'react-native';
+import { useAuth } from '@/context/AuthContext';
 
 import {
   CallHistory,
@@ -40,6 +38,8 @@ type UpdateLeadData = {
 // --------------------------------------------------
 
 type ApiLead = {
+  batch_id?: number | null;
+  batch_name?: string;
   id: number;
   name: string;
   phone: string;
@@ -107,6 +107,8 @@ function mapApiLead(
 ): Lead {
   return {
     id: String(lead.id),
+    batchId: lead.batch_id,
+    batchName: lead.batch_name || "Unbatched leads",
     name: lead.name,
     phone: lead.phone,
     status: mapApiStatus(lead.status),
@@ -120,6 +122,9 @@ function mapApiLead(
 // --------------------------------------------------
 
 type LeadContextType = {
+  refresh: () => Promise<void>;
+  refreshing: boolean;
+  refreshError: string | null;
   leads: Lead[];
 
   updateLead: (
@@ -160,103 +165,53 @@ export function LeadProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const { token: sessionToken } = useAuth();
   const [leads, setLeads] =
     useState<Lead[]>([]);
 
   const [callHistory, setCallHistory] =
     useState<CallHistory[]>([]);
 
-  const [isLoaded, setIsLoaded] =
-    useState(false);
-
-  // ------------------------------------------------
-  // LOAD DATA
-  // ------------------------------------------------
-
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const refreshRef = useRef<() => Promise<void>>(async () => {});
+  const refresh = () => refreshRef.current();
   useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    setLeads([]);
+    setCallHistory([]);
     const loadData = async () => {
+      if (!sessionToken || inFlight) return;
+      inFlight = true;
+      setRefreshing(true);
+      setRefreshError(null);
       try {
-        // ------------------------------------------
-        // LOAD LOCAL CALL HISTORY
-        // ------------------------------------------
-
-        const savedCallHistory =
-          await loadCallHistory();
-
-        if (savedCallHistory) {
-          setCallHistory(
-            savedCallHistory
-          );
-        }
-
-        // ------------------------------------------
-        // GET AUTH TOKEN
-        // ------------------------------------------
-
-        const token =
-          await getStoredToken();
-
-        if (!token) {
-          console.log(
-            'No authentication token found.'
-          );
-
-          return;
-        }
-
-        // ------------------------------------------
-        // LOAD ASSIGNED LEADS FROM DJANGO
-        // ------------------------------------------
-
-        const response =
-          await apiRequest<
-            ApiLead[]
-          >(
-            '/mobile/leads/',
-            {
-              token,
-            }
-          );
-
-        const apiLeads =
-          response.map(
-            mapApiLead
-          );
-
-        setLeads(apiLeads);
-
-        console.log(
-          `Loaded ${apiLeads.length} students from Django.`
-        );
+        const [leadResponse, historyResponse] = await Promise.all([
+          apiRequest<ApiLead[]>('/mobile/leads/', { token: sessionToken }),
+          apiRequest<Array<{
+            id: number; lead: number; lead_name: string; lead_phone: string;
+            outcome: string; notes: string; started_at: string; ended_at: string | null;
+          }>>('/calls/mine/', { token: sessionToken }),
+        ]);
+        if (cancelled) return;
+        setLeads(leadResponse.map(mapApiLead));
+        setCallHistory(historyResponse.map(call => ({
+          id: String(call.id), leadId: String(call.lead), leadName: call.lead_name,
+          phone: call.lead_phone, outcome: mapApiStatus(call.outcome),
+          notes: call.notes, calledAt: call.ended_at || call.started_at,
+        })));
       } catch (error) {
-        console.error(
-          'LEAD DATA LOAD ERROR:',
-          error
-        );
-      } finally {
-        setIsLoaded(true);
-      }
+        if (!cancelled) setRefreshError('Could not refresh. Check your connection and try again.');
+      } finally { inFlight = false; if (!cancelled) setRefreshing(false); }
     };
-
-    loadData();
-  }, []);
-
-  // ------------------------------------------------
-  // SAVE CALL HISTORY
-  // ------------------------------------------------
-
-  useEffect(() => {
-    if (!isLoaded) {
-      return;
-    }
-
-    saveCallHistory(
-      callHistory
-    );
-  }, [
-    callHistory,
-    isLoaded,
-  ]);
+    refreshRef.current = loadData;
+    void loadData();
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') void loadData();
+    });
+    return () => { cancelled = true; subscription.remove(); };
+  }, [sessionToken]);
 
   // ------------------------------------------------
   // UPDATE LEAD
@@ -498,6 +453,7 @@ export function LeadProvider({
   const value =
     useMemo(
       () => ({
+        refresh, refreshing, refreshError,
         leads,
         updateLead,
         callHistory,
@@ -508,7 +464,7 @@ export function LeadProvider({
       }),
       [
         leads,
-        callHistory,
+        callHistory, refreshing, refreshError,
       ]
     );
 

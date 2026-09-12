@@ -1,4 +1,6 @@
-const API_BASE_URL = "http://192.168.31.191:8000/api/v1";
+const API_BASE_URL = (
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.58.15.62:8000/api/v1"
+).replace(/\/+$/, "");
 
 type ApiOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -29,6 +31,10 @@ export async function apiRequest<T>(
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+  }).catch(() => {
+    throw new Error(
+      `Cannot reach the CRM at ${API_BASE_URL}. Check that the CRM server is running and your device is on the same network.`
+    );
   });
 
   let data: any = null;

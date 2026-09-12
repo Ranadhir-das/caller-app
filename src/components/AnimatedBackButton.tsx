@@ -1,3 +1,4 @@
+import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { ReactNode } from 'react';
 import { router } from 'expo-router';
 import {
@@ -19,6 +20,7 @@ export function AnimatedBackButton({
   onPress,
   children,
 }: AnimatedBackButtonProps) {
+  const styles = useAppStyles(createStyles);
   return (
     <Pressable
       onPress={onPress ?? (() => router.back())}
@@ -33,14 +35,14 @@ export function AnimatedBackButton({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppColors) => StyleSheet.create({
   button: {
     width: 42,
     height: 42,
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
 
   buttonPressed: {
@@ -55,7 +57,7 @@ const styles = StyleSheet.create({
   icon: {
     fontSize: 32,
     lineHeight: 34,
-    color: '#111827',
+    color: colors.text,
     fontWeight: '300',
     marginTop: -2,
   },

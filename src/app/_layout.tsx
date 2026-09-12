@@ -9,10 +9,11 @@ import {
   router,
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
+import { AppThemeProvider, useAppTheme } from '@/context/AppThemeContext';
 import {
   ActivityIndicator,
   StyleSheet,
-  useColorScheme,
   View,
 } from 'react-native';
 
@@ -50,12 +51,13 @@ function AuthRedirect() {
 }
 
 function AppNavigator() {
+  const { colors } = useAppTheme();
   const { loading } = useAuth();
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -67,9 +69,12 @@ function AppNavigator() {
       <Stack
         screenOptions={{
           headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
         }}
       >
         <Stack.Screen name="login" />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="settings" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="lead-details" />
         <Stack.Screen name="call-history-details" />
@@ -81,27 +86,40 @@ function AppNavigator() {
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  return <AppThemeProvider><ThemedRoot /></AppThemeProvider>;
+}
+
+function ThemedRoot() {
+  const { mode, colors, ready } = useAppTheme();
+  if (!ready) return null;
+  const navigationTheme = mode === 'dark' ? DarkTheme : DefaultTheme;
 
   return (
     <ThemeProvider
       value={
-        colorScheme === 'dark'
-          ? DarkTheme
-          : DefaultTheme
+        { ...navigationTheme, colors: { ...navigationTheme.colors, background: colors.background,
+          card: colors.surface, text: colors.text, border: colors.border, primary: colors.accent } }
       }
     >
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <AuthProvider>
-        <LeadProvider>
+        <AnimatedSplashOverlay />
+        <AccountData />
+      </AuthProvider>
+    </ThemeProvider>
+  );
+}
+
+function AccountData() {
+  const { user } = useAuth();
+  return (
+        <LeadProvider key={user?.id ?? "signed-out"}>
           <DialerSessionProvider>
-            <AnimatedSplashOverlay />
 
             <AppNavigator />
 
           </DialerSessionProvider>
         </LeadProvider>
-      </AuthProvider>
-    </ThemeProvider>
   );
 }
 
