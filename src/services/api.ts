@@ -1,5 +1,5 @@
 const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.58.15.62:8000/api/v1"
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.58.15.93:8000/api/v1"
 ).replace(/\/+$/, "");
 
 type ApiOptions = {
@@ -51,20 +51,32 @@ export async function apiRequest<T>(
       response.status,
       data
     );
-    
-    const message =
-      data?.detail ||
-      data?.callback_at ||
-      data?.non_field_errors?.[0] ||
-      "Something went wrong. Please try again.";
-    
-    throw new Error(
-      typeof message === "string"
-        ? message
-        : JSON.stringify(message)
-    );
 
+    throw new Error(extractErrorMessage(data));
   }
 
   return data as T;
+}
+
+/**
+ * DRF returns either `{detail: "..."}` / `{non_field_errors: [...]}` for
+ * general errors, or `{field_name: ["message"]}` for per-field validation
+ * errors (e.g. signup). Surface whichever is present.
+ */
+function extractErrorMessage(data: any): string {
+  if (!data || typeof data !== "object") {
+    return "Something went wrong. Please try again.";
+  }
+  if (typeof data.detail === "string") return data.detail;
+  if (typeof data.callback_at === "string") return data.callback_at;
+  if (Array.isArray(data.non_field_errors) && typeof data.non_field_errors[0] === "string") {
+    return data.non_field_errors[0];
+  }
+  for (const [field, value] of Object.entries(data)) {
+    if (Array.isArray(value) && typeof value[0] === "string") {
+      return field === "non_field_errors" ? value[0] : `${field}: ${value[0]}`;
+    }
+    if (typeof value === "string") return value;
+  }
+  return "Something went wrong. Please try again.";
 }

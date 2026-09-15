@@ -1,7 +1,7 @@
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { useAuth } from "@/context/AuthContext";
-import { login } from "@/services/auth";
 import { router } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import {
     ActivityIndicator,
@@ -10,10 +10,17 @@ import {
     Platform,
     Pressable,
     StyleSheet,
+    Switch,
     Text,
     TextInput,
     View,
 } from "react-native";
+
+type PendingChallenge = {
+  id: string;
+  action: "ENROLL" | "IN";
+  reviewNote?: string;
+};
 
 export default function LoginScreen() {
   const styles = useAppStyles(createStyles);
@@ -21,8 +28,10 @@ export default function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  
-  const { login } = useAuth();
+  const [challenge, setChallenge] = useState<PendingChallenge | null>(null);
+  const [consent, setConsent] = useState(false);
+
+  const { beginLogin, completeLogin } = useAuth();
 
   const handleLogin = async () => {
     if (!username.trim() || !password) {
@@ -33,13 +42,37 @@ export default function LoginScreen() {
     try {
       setLoading(true);
 
-      await login(
-        username.trim(),
-        password
-      );
-      
-      router.replace("/(tabs)");
+      const result = await beginLogin(username.trim(), password);
 
+      if (result.status === "PENDING") {
+        Alert.alert(
+          "Awaiting approval",
+          result.detail || "Your enrollment photo is awaiting administrator approval."
+        );
+        return;
+      }
+
+      if (!result.challenge) {
+        throw new Error("Unexpected response from server.");
+      }
+
+      if (!result.photo_required) {
+        // No camera step needed (e.g. admin sign-in) — finish immediately.
+        const verified = await completeLogin(result.challenge);
+        if ("token" in verified) {
+          router.replace("/employee");
+        } else {
+          Alert.alert("Almost there", verified.detail);
+        }
+        return;
+      }
+
+      setConsent(false);
+      setChallenge({
+        id: result.challenge,
+        action: result.status === "ENROLLMENT_REQUIRED" ? "ENROLL" : "IN",
+        reviewNote: result.review_note,
+      });
     } catch (error) {
       console.error("Login error:", error);
 
@@ -48,6 +81,56 @@ export default function LoginScreen() {
         error instanceof Error
           ? error.message
           : "Unable to login. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const capturePhoto = async () => {
+    if (!challenge) return;
+
+    if (challenge.action === "ENROLL" && !consent) {
+      Alert.alert("Consent required", "Please agree to photo attendance to continue.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        throw new Error("Camera permission is required. Enable it in phone settings.");
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        cameraType: ImagePicker.CameraType.front,
+        mediaTypes: ["images"],
+        quality: 0.4,
+        base64: true,
+        allowsEditing: false,
+      });
+      if (result.canceled) return;
+
+      const image = result.assets[0].base64;
+      if (!image) throw new Error("Photo could not be read. Please try again.");
+
+      const verified = await completeLogin(challenge.id, image, challenge.action === "ENROLL");
+
+      if ("token" in verified) {
+        router.replace("/employee");
+      } else {
+        Alert.alert("Submitted", verified.detail);
+        setChallenge(null);
+      }
+    } catch (error) {
+      console.error("Login verification error:", error);
+
+      Alert.alert(
+        "Verification Failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to verify your photo. Please try again."
       );
     } finally {
       setLoading(false);
@@ -66,48 +149,107 @@ export default function LoginScreen() {
           Caller Login
         </Text>
 
-        <View style={styles.form}>
-          <Text style={styles.label}>Username</Text>
+        {challenge ? (
+          <View style={styles.form}>
+            <Text style={styles.label}>
+              {challenge.action === "ENROLL"
+                ? "Enrollment photo required"
+                : "Verify it's you"}
+            </Text>
 
-          <TextInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
-            style={styles.input}
-            placeholder="Enter username"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-          />
+            <Text style={styles.helperText}>
+              {challenge.action === "ENROLL"
+                ? "Capture a clear photo of your face with the front camera. An administrator reviews it before check-in becomes available."
+                : "Take a fresh photo with the front camera to confirm it's you before signing in."}
+            </Text>
 
-          <Text style={styles.label}>Password</Text>
-
-          <TextInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
-            style={styles.input}
-            placeholder="Enter password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            editable={!loading}
-          />
-
-          <Pressable
-            style={[
-              styles.button,
-              loading && styles.buttonDisabled,
-            ]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.buttonText}>
-                Login
+            {!!challenge.reviewNote && (
+              <Text style={[styles.helperText, { color: colors.danger }]}>
+                Previous attempt: {challenge.reviewNote}
               </Text>
             )}
-          </Pressable>
-        </View>
+
+            {challenge.action === "ENROLL" && (
+              <View style={styles.consentRow}>
+                <Switch value={consent} onValueChange={setConsent} disabled={loading} />
+                <Text style={[styles.helperText, { flex: 1, marginBottom: 0 }]}>
+                  I consent to using my photo for attendance verification.
+                </Text>
+              </View>
+            )}
+
+            <Pressable
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={capturePhoto}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.buttonText}>Take photo</Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={styles.linkButton}
+              onPress={() => setChallenge(null)}
+              disabled={loading}
+            >
+              <Text style={styles.linkButtonText}>Back to login</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.form}>
+            <Text style={styles.label}>Username</Text>
+
+            <TextInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
+              style={styles.input}
+              placeholder="Enter username"
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!loading}
+            />
+
+            <Text style={styles.label}>Password</Text>
+
+            <TextInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
+              style={styles.input}
+              placeholder="Enter password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              editable={!loading}
+            />
+
+            <Pressable
+              style={[
+                styles.button,
+                loading && styles.buttonDisabled,
+              ]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.buttonText}>
+                  Login
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={styles.linkButton}
+              onPress={() => router.push("/signup")}
+              disabled={loading}
+            >
+              <Text style={styles.linkButtonText}>New employee? Sign up</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -161,6 +303,31 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
     backgroundColor: colors.surfaceMuted,
+  },
+
+  helperText: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+
+  consentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 20,
+  },
+
+  linkButton: {
+    marginTop: 16,
+    alignItems: "center",
+  },
+
+  linkButtonText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: "600",
   },
 
   button: {

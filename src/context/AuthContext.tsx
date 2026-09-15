@@ -2,6 +2,7 @@ import React, {
     createContext,
     useContext,
     useEffect,
+    useRef,
     useState,
 } from "react";
 import { AppState } from 'react-native';
@@ -12,20 +13,29 @@ import {
     getCurrentUser,
     getStoredToken,
     LoggedInUser,
-    login as loginUser,
+    LoginChallenge,
+    VerifyLoginResult,
+    beginLogin as beginLoginRequest,
+    verifyLogin as verifyLoginRequest,
     logout as logoutUser,
 } from "@/services/auth";
 
 type AuthContextType = {
+  refreshUser: () => Promise<void>;
   photo: string | null;
   setPhoto: (photo: string | null) => Promise<void>;
   user: LoggedInUser | null;
   token: string | null;
   loading: boolean;
-  login: (
+  beginLogin: (
     username: string,
     password: string
-  ) => Promise<void>;
+  ) => Promise<LoginChallenge>;
+  completeLogin: (
+    challenge: string,
+    photo?: string,
+    consent?: boolean
+  ) => Promise<VerifyLoginResult>;
   logout: () => Promise<void>;
 };
 
@@ -67,10 +77,16 @@ export function AuthProvider({
     restoreSession();
   }, []);
 
+  const loggingOutRef = useRef(false);
+
   useEffect(() => {
     if (!token) return;
     let queue = Promise.resolve();
     const send = (active: boolean) => {
+      // Skip once logout has started: the token is about to be (or already) invalidated
+      // server-side, and this effect's cleanup only runs after the async logout resolves,
+      // so without this guard a heartbeat can race the logout call and hit a 401.
+      if (loggingOutRef.current) return;
       queue = queue.then(() => sessionHeartbeat(token, active)).catch(() => {});
     };
     send(AppState.currentState === 'active');
@@ -103,20 +119,33 @@ export function AuthProvider({
     }
   };
 
-  const login = async (
-    username: string,
-    password: string
-  ) => {
-    const response = await loginUser(
-      username,
-      password
-    );
+  const beginLogin = (username: string, password: string) =>
+    beginLoginRequest(username, password);
 
-    setToken(response.token);
-    setUser(response.user);
+  const completeLogin = async (
+    challenge: string,
+    photo?: string,
+    consent?: boolean
+  ) => {
+    const response = await verifyLoginRequest(challenge, photo, consent);
+
+    if ("token" in response) {
+      loggingOutRef.current = false;
+      setToken(response.token);
+      setUser(response.user);
+    }
+
+    return response;
+  };
+
+  const refreshUser = async () => {
+    if (!token) return;
+    const updated = await getCurrentUser(token);
+    setUser(current => current?.id === updated.id ? updated : current);
   };
 
   const logout = async () => {
+    loggingOutRef.current = true;
     await logoutUser();
 
     setToken(null);
@@ -126,12 +155,14 @@ export function AuthProvider({
   return (
     <AuthContext.Provider
       value={{
+        refreshUser,
         photo,
         setPhoto,
         user,
         token,
         loading,
-        login,
+        beginLogin,
+        completeLogin,
         logout,
       }}
     >

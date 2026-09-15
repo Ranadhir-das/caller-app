@@ -165,7 +165,7 @@ export function LeadProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { token: sessionToken } = useAuth();
+  const { token: sessionToken, user } = useAuth();
   const [leads, setLeads] =
     useState<Lead[]>([]);
 
@@ -182,7 +182,7 @@ export function LeadProvider({
     setLeads([]);
     setCallHistory([]);
     const loadData = async () => {
-      if (!sessionToken || inFlight) return;
+      if (!sessionToken || user?.role !== 'CALLER' || inFlight) return;
       inFlight = true;
       setRefreshing(true);
       setRefreshError(null);
@@ -211,7 +211,7 @@ export function LeadProvider({
       if (state === 'active') void loadData();
     });
     return () => { cancelled = true; subscription.remove(); };
-  }, [sessionToken]);
+  }, [sessionToken, user?.role]);
 
   // ------------------------------------------------
   // UPDATE LEAD

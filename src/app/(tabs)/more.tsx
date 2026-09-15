@@ -40,6 +40,7 @@ export default function MoreScreen() {
         </Pressable>
         <Text style={styles.groupTitle}>ACCOUNT</Text>
         {([
+          ['Employee workspace', 'Leave, attendance and daily work', '/employee'],
           ['My Profile', 'Account details and profile photo', '/profile'],
           ['Settings', 'Appearance and app preferences', '/settings'],
         ] as const).map(([title, subtitle, route]) => (
@@ -49,8 +50,8 @@ export default function MoreScreen() {
             <View style={styles.chevron} />
           </Pressable>
         ))}
-        <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy, busy }} disabled={busy} style={({ pressed }) => [styles.card, pressed && styles.pressed]} onPress={signOut}>
-          <View style={{ flex: 1 }}><Text style={styles.logout}>{busy ? 'Logging out...' : 'Logout'}</Text><Text style={styles.subtitle}>Sign out of this device</Text></View>
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy, busy }} disabled={busy} style={({ pressed }) => [styles.card, pressed && styles.pressed]} onPress={() => router.push('/employee')}>
+          <View style={{ flex: 1 }}><Text style={styles.logout}>{busy ? 'Logging out...' : 'Logout'}</Text><Text style={styles.subtitle}>Attendance check-out and sign out</Text></View>
           <View style={styles.chevron} />
         </Pressable>
       </ScrollView>

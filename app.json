@@ -19,7 +19,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.callerapp"
+      "package": "com.anonymous.callerapp",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.CALL_PHONE",
+        "android.permission.READ_PHONE_STATE"
+      ]
     },
     "web": {
       "output": "static",
@@ -42,7 +47,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Choose a photo for your caller profile.",
-          "cameraPermission": false,
+          "cameraPermission": "Take a live photo for employee attendance and enrollment.",
           "microphonePermission": false
         }
       ]

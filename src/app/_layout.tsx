@@ -37,13 +37,17 @@ function AuthRedirect() {
       return;
     }
 
-    if (!user && pathname !== '/login') {
+    if (!user && !['/login', '/signup'].includes(pathname)) {
       router.replace('/login');
       return;
     }
 
+    if (user && (user.role !== 'CALLER' || user.needs_onboarding) && !['/employee', '/profile', '/settings', '/login'].includes(pathname)) {
+      router.replace('/employee');
+      return;
+    }
     if (user && pathname === '/login') {
-      router.replace('/(tabs)');
+      router.replace('/employee');
     }
   }, [user, loading, pathname]);
 
@@ -52,7 +56,7 @@ function AuthRedirect() {
 
 function AppNavigator() {
   const { colors } = useAppTheme();
-  const { loading } = useAuth();
+  const { loading, user } = useAuth();
 
   if (loading) {
     return (
@@ -73,13 +77,21 @@ function AppNavigator() {
         }}
       >
         <Stack.Screen name="login" />
-        <Stack.Screen name="profile" />
-        <Stack.Screen name="settings" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="lead-details" />
-        <Stack.Screen name="call-history-details" />
-        <Stack.Screen name="follow-up-details" />
-        <Stack.Screen name="call-outcome" />
+        <Stack.Screen name="signup" />
+        <Stack.Protected guard={!!user}>
+          <Stack.Screen name="employee" />
+          <Stack.Screen name="profile" />
+          <Stack.Screen name="settings" />
+        </Stack.Protected>
+        <Stack.Protected guard={user?.role === 'CALLER' && !user.needs_onboarding}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="lead-details" />
+          <Stack.Screen name="call-history-details" />
+          <Stack.Screen name="follow-up-details" />
+          <Stack.Screen name="call-outcome" />
+          <Stack.Screen name="dialer" />
+          <Stack.Screen name="dialer-backup" />
+        </Stack.Protected>
       </Stack>
     </>
   );

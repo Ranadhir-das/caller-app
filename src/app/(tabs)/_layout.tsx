@@ -1,3 +1,5 @@
+import { Redirect } from 'expo-router';
+import { useAuth } from '@/context/AuthContext';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -6,6 +8,8 @@ import { Colors } from '@/constants/theme';
 export default function TabsLayout() {
   const scheme = useColorScheme();
   const colors = Colors[scheme];
+  const { user } = useAuth();
+  if (user && user.role !== 'CALLER') return <Redirect href="/employee" />;
 
   return (
     <NativeTabs
