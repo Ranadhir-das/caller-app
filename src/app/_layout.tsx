@@ -82,6 +82,8 @@ function AppNavigator() {
           <Stack.Screen name="employee" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="settings" />
+          <Stack.Screen name="chat" />
+          <Stack.Screen name="notices" />
         </Stack.Protected>
         <Stack.Protected guard={user?.role === 'CALLER' && !user.needs_onboarding}>
           <Stack.Screen name="(tabs)" />

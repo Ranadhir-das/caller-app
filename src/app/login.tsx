@@ -2,6 +2,7 @@ import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeCon
 import { useAuth } from "@/context/AuthContext";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { getCurrentCoords } from "@/services/location";
 import { useState } from "react";
 import {
     ActivityIndicator,
@@ -58,7 +59,8 @@ export default function LoginScreen() {
 
       if (!result.photo_required) {
         // No camera step needed (e.g. admin sign-in) — finish immediately.
-        const verified = await completeLogin(result.challenge);
+        const location = await getCurrentCoords();
+        const verified = await completeLogin(result.challenge, undefined, undefined, location);
         if ("token" in verified) {
           router.replace("/employee");
         } else {
@@ -115,7 +117,8 @@ export default function LoginScreen() {
       const image = result.assets[0].base64;
       if (!image) throw new Error("Photo could not be read. Please try again.");
 
-      const verified = await completeLogin(challenge.id, image, challenge.action === "ENROLL");
+      const location = await getCurrentCoords();
+      const verified = await completeLogin(challenge.id, image, challenge.action === "ENROLL", location);
 
       if ("token" in verified) {
         router.replace("/employee");
@@ -146,7 +149,7 @@ export default function LoginScreen() {
         <Text style={styles.title}>Aspiring Life</Text>
 
         <Text style={styles.subtitle}>
-          Caller Login
+          Employee Login
         </Text>
 
         {challenge ? (

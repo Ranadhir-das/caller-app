@@ -19,6 +19,7 @@ import {
     verifyLogin as verifyLoginRequest,
     logout as logoutUser,
 } from "@/services/auth";
+import type { Coords } from "@/services/location";
 
 type AuthContextType = {
   refreshUser: () => Promise<void>;
@@ -34,7 +35,8 @@ type AuthContextType = {
   completeLogin: (
     challenge: string,
     photo?: string,
-    consent?: boolean
+    consent?: boolean,
+    location?: Coords | null
   ) => Promise<VerifyLoginResult>;
   logout: () => Promise<void>;
 };
@@ -125,9 +127,10 @@ export function AuthProvider({
   const completeLogin = async (
     challenge: string,
     photo?: string,
-    consent?: boolean
+    consent?: boolean,
+    location?: Coords | null
   ) => {
-    const response = await verifyLoginRequest(challenge, photo, consent);
+    const response = await verifyLoginRequest(challenge, photo, consent, location);
 
     if ("token" in response) {
       loggingOutRef.current = false;

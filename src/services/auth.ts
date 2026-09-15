@@ -41,15 +41,24 @@ export async function beginLogin(
   });
 }
 
-/** Step 2: submit the challenge (with a photo when the server required one) to receive a token. */
+/** Step 2: submit the challenge (with a photo when the server required one) to receive a token.
+ *  `location` is best-effort — the server still logs the session without it if the employee
+ *  denies the permission or the device can't get a fix in time. */
 export async function verifyLogin(
   challenge: string,
   photo?: string,
-  consent?: boolean
+  consent?: boolean,
+  location?: { latitude: number; longitude: number } | null
 ): Promise<VerifyLoginResult> {
   const response = await apiRequest<VerifyLoginResult>("/mobile/login/verify/", {
     method: "POST",
-    body: { challenge, photo, consent },
+    body: {
+      challenge,
+      photo,
+      consent,
+      latitude: location?.latitude,
+      longitude: location?.longitude,
+    },
   });
 
   if ("token" in response) {

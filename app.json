@@ -50,6 +50,12 @@
           "cameraPermission": "Take a live photo for employee attendance and enrollment.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Your location is recorded at sign-in so administrators can verify where attendance was marked from."
+        }
       ]
     ],
     "experiments": {

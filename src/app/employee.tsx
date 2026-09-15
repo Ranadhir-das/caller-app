@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { useAppTheme, useAppStyles, AppColors } from '@/context/AppThemeContext';
@@ -28,7 +29,8 @@ export default function EmployeeScreen() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
-  const [start, setStart] = useState(''); const [end, setEnd] = useState('');
+  const [start, setStart] = useState<Date|null>(null); const [end, setEnd] = useState<Date|null>(null);
+  const [openPicker, setOpenPicker] = useState<'start'|'end'|null>(null);
   const [reason, setReason] = useState(''); const [notes, setNotes] = useState(''); const [link, setLink] = useState('');
   const load = useCallback(async () => {
     if (!token) return;
@@ -62,9 +64,12 @@ export default function EmployeeScreen() {
   const signOut = () => void run(async () => { await logout(); router.replace('/login'); });
   const button = (title:string, action:()=>void) => <Pressable accessibilityRole="button" disabled={busy} onPress={action} style={[styles.button,busy&&{opacity:0.6}]}><Text style={styles.buttonText}>{title}</Text></Pressable>;
   const input = (label:string, value:string, change:(s:string)=>void, multiline=false) => <View style={{gap:6}}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} style={[styles.input,multiline&&{minHeight:85,textAlignVertical:'top'}]} value={value} onChangeText={change} multiline={multiline} keyboardAppearance={mode} placeholderTextColor={colors.placeholder} autoCapitalize="none" /></View>;
+  const isoDate = (d:Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const showDate = (d:Date) => d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  const dateField = (label:string, value:Date|null, key:'start'|'end') => <View style={{gap:6}}><Text style={styles.label}>{label}</Text><Pressable accessibilityRole="button" accessibilityLabel={label} style={[styles.input,styles.dateInput]} onPress={()=>setOpenPicker(key)}><Text style={{color:value?colors.text:colors.placeholder,fontSize:15}}>{value?showDate(value):'Select date'}</Text><Text style={styles.calendarIcon}>📅</Text></Pressable></View>;
   return <SafeAreaView style={styles.container}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.accent}/>}>
     <View style={styles.row}><View style={{flex:1}}><Text style={styles.title}>{user?.name || user?.username}</Text><Text style={styles.subtitle}>{data?.role_label || user?.role} workspace</Text></View><Pressable accessibilityLabel="My profile" onPress={()=>router.push('/profile')}><CallerAvatar/></Pressable></View>
-    <View style={styles.row}>{user?.role==='CALLER'&&!user.needs_onboarding&&button('Calling workspace',()=>router.replace('/(tabs)'))}{button('Settings',()=>router.push('/settings'))}{button('Check out / Logout',signOut)}</View>
+    <View style={styles.row}>{user?.role==='CALLER'&&!user.needs_onboarding&&button('Calling workspace',()=>router.replace('/(tabs)'))}{button('Team chat',()=>router.push('/chat'))}{button('Notices',()=>router.push('/notices'))}{button('Settings',()=>router.push('/settings'))}{button('Check out / Logout',signOut)}</View>
     {user?.needs_onboarding&&<View style={styles.card}><Text style={styles.heading}>Welcome - set up your employee photo</Text><Text style={styles.subtitle}>Capture your enrollment photo below once. Management will review it before photo attendance becomes available.</Text></View>}
     {!!error&&<Text style={{color:colors.danger}}>{error}</Text>}
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>{['Attendance','Leave','My work'].map(t=><Pressable key={t} style={[styles.chip,tab===t&&{backgroundColor:colors.primary}]} onPress={()=>setTab(t)}><Text style={{color:tab===t?colors.onPrimary:colors.text}}>{t}</Text></Pressable>)}</ScrollView>
@@ -77,7 +82,17 @@ export default function EmployeeScreen() {
       {!data?.attendance.length&&<Text style={styles.subtitle}>No attendance records yet.</Text>}
     </>}
     {tab==='Leave'&&<>
-      <View style={styles.card}><Text style={styles.heading}>Apply for leave</Text>{input('Start date (YYYY-MM-DD)',start,setStart)}{input('End date (YYYY-MM-DD)',end,setEnd)}{input('Reason',reason,setReason,true)}{button('Submit request',()=>run(async()=>{await request('leaves/',{start_date:start,end_date:end,reason});setReason('');Alert.alert('Submitted','Your leave request is awaiting approval.');}))}</View>
+      <View style={styles.card}><Text style={styles.heading}>Apply for leave</Text>
+        {dateField('Start date',start,'start')}
+        {dateField('End date',end,'end')}
+        {input('Reason',reason,setReason,true)}
+        {button('Submit request',()=>{
+          if(!start||!end){Alert.alert('Leave','Please select a start and end date.');return;}
+          void run(async()=>{await request('leaves/',{start_date:isoDate(start),end_date:isoDate(end),reason});setReason('');setStart(null);setEnd(null);Alert.alert('Submitted','Your leave request is awaiting approval.');});
+        })}
+        {openPicker==='start'&&<DateTimePicker themeVariant={mode} value={start||new Date()} mode="date" display={Platform.OS==='android'?'default':'spinner'} minimumDate={new Date()} onChange={(_,d)=>{setOpenPicker(null); if(d){setStart(d); if(end&&end<d)setEnd(null);}}} />}
+        {openPicker==='end'&&<DateTimePicker themeVariant={mode} value={end||start||new Date()} mode="date" display={Platform.OS==='android'?'default':'spinner'} minimumDate={start||new Date()} onChange={(_,d)=>{setOpenPicker(null); if(d)setEnd(d);}} />}
+      </View>
       {data?.leaves.map(l=><View key={l.id} style={styles.card}><Text style={styles.label}>{l.start_date} to {l.end_date} - {l.status}</Text><Text style={styles.subtitle}>{l.reason}</Text>{!!l.review_note&&<Text style={styles.subtitle}>{l.review_note}</Text>}{l.status==='PENDING'&&button('Cancel request',()=>run(async()=>{await request(`leaves/${l.id}/`,undefined,'DELETE');}))}</View>)}
       <Text style={styles.heading}>Upcoming holidays</Text>{data?.holidays.map(h=><Text key={h.id} style={styles.subtitle}>{h.date} - {h.name}</Text>)}
     </>}
@@ -97,4 +112,5 @@ const makeStyles=(c:AppColors)=>StyleSheet.create({
   row:{flexDirection:'row',flexWrap:'wrap',alignItems:'center',gap:8},chip:{padding:12,borderRadius:20,backgroundColor:c.surface},
   button:{backgroundColor:c.primary,padding:12,borderRadius:10,minHeight:44},buttonText:{color:c.onPrimary,fontWeight:'600',fontSize:13},
   input:{padding:12,borderRadius:10,borderWidth:1,borderColor:c.border,color:c.text,backgroundColor:c.background,fontSize:15},
+  dateInput:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},calendarIcon:{fontSize:16},
 });
