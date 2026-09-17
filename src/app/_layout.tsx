@@ -42,12 +42,14 @@ function AuthRedirect() {
       return;
     }
 
-    if (user && (user.role !== 'CALLER' || user.needs_onboarding) && !['/employee', '/profile', '/settings', '/login'].includes(pathname)) {
-      router.replace('/employee');
+    if (user && (user.role !== 'CALLER' || user.needs_onboarding) && !['/employee', '/employee/index', '/employee/attendance', '/employee/leave', '/employee/work', '/profile', '/settings', '/chat', '/notices', '/login'].includes(pathname)) {
+      // '/employee' is the NativeTabs group root (like '/(tabs)' elsewhere) — navigating to
+      // '/employee/index' directly breaks at runtime ("Unmatched Route") even though it type-checks.
+      router.replace('/employee' as never);
       return;
     }
     if (user && pathname === '/login') {
-      router.replace('/employee');
+      router.replace('/employee' as never);
     }
   }, [user, loading, pathname]);
 

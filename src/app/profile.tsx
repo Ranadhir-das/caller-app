@@ -1,5 +1,6 @@
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { router } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AnimatedBackButton } from '@/components/AnimatedBackButton';
 import { CallerAvatar } from '@/components/CallerAvatar';
@@ -8,8 +9,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ProfileScreen() {
   const styles = useAppStyles(createStyles);
-  const { user, photo, setPhoto } = useAuth();
+  const { user, photo, setPhoto, logout } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const loggingOut = useRef(false);
+  // Logout never requires face verification; checkout time is recorded server-side from the session close.
+  const signOut = async () => {
+    if (loggingOut.current) return;
+    loggingOut.current = true;
+    setSigningOut(true);
+    try { await logout(); router.replace('/login'); }
+    catch { Alert.alert('Could not log out', 'Please try again.'); }
+    finally { loggingOut.current = false; setSigningOut(false); }
+  };
   const name = user?.name?.trim() || user?.username || 'Caller';
   const choosePhoto = async () => {
     if (busy) return;
@@ -39,7 +51,7 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
       <AnimatedBackButton /><Text style={[styles.title, { marginTop: 16 }]}>My Profile</Text>
       <Text style={styles.subtitle}>
-        Your CRM account and profile photo.
+        Your Vaani account and profile photo.
       </Text>
 
       <View style={styles.profileCard}>
@@ -72,7 +84,15 @@ export default function ProfileScreen() {
           <Text selectable style={styles.name}>{value}</Text>
         </View>
       ))}
-      <Text style={[styles.subtitle, { marginTop: 20 }]}>Account details are managed by your CRM administrator. Your profile photo is saved on this device.</Text>
+      <Text style={[styles.subtitle, { marginTop: 20 }]}>Account details are managed by your Vaani administrator. Your profile photo is saved on this device.</Text>
+
+      <Text style={[styles.groupTitle, { marginTop: 10 }]}>ACCOUNT</Text>
+      <Pressable style={styles.option} disabled={busy || signingOut} onPress={() => router.push('/settings')} accessibilityRole="button">
+        <Text style={styles.optionText}>Settings</Text>
+      </Pressable>
+      <Pressable style={styles.option} disabled={busy || signingOut} onPress={signOut} accessibilityRole="button" accessibilityState={{ disabled: signingOut, busy: signingOut }}>
+        <Text style={styles.logoutText}>{signingOut ? 'Logging out…' : 'Check out / Logout'}</Text>
+      </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -144,5 +164,17 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: colors.secondary,
+  },
+  groupTitle: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginVertical: 8,
+  },
+  logoutText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.danger,
   },
 });

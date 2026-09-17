@@ -113,7 +113,7 @@ export default function SignupScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Aspiring Life</Text>
+        <Text style={styles.title}>Vaani</Text>
         <Text style={styles.subtitle}>Employee Signup</Text>
 
         <View style={styles.form}>

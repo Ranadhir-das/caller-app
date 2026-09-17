@@ -9,7 +9,7 @@ export default function TabsLayout() {
   const scheme = useColorScheme();
   const colors = Colors[scheme];
   const { user } = useAuth();
-  if (user && user.role !== 'CALLER') return <Redirect href="/employee" />;
+  if (user && user.role !== 'CALLER') return <Redirect href={'/employee' as never} />;
 
   return (
     <NativeTabs

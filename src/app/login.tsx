@@ -62,7 +62,7 @@ export default function LoginScreen() {
         const location = await getCurrentCoords();
         const verified = await completeLogin(result.challenge, undefined, undefined, location);
         if ("token" in verified) {
-          router.replace("/employee");
+          router.replace("/employee" as never);
         } else {
           Alert.alert("Almost there", verified.detail);
         }
@@ -121,7 +121,7 @@ export default function LoginScreen() {
       const verified = await completeLogin(challenge.id, image, challenge.action === "ENROLL", location);
 
       if ("token" in verified) {
-        router.replace("/employee");
+        router.replace("/employee" as never);
       } else {
         Alert.alert("Submitted", verified.detail);
         setChallenge(null);
@@ -146,7 +146,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Aspiring Life</Text>
+        <Text style={styles.title}>Vaani</Text>
 
         <Text style={styles.subtitle}>
           Employee Login
