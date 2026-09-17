@@ -2,6 +2,12 @@ export const API_BASE_URL = (
   process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.31.191:8000/api/v1"
 ).replace(/\/+$/, "");
 
+// The CRM's own app-introduction/download page, on whatever host this build
+// points at — derived from API_BASE_URL rather than hardcoded, so a local dev
+// build links to the local dev server and a production build links to the
+// real domain.
+export const APP_DOWNLOAD_URL = `${API_BASE_URL.replace(/\/api\/v1$/, "")}/app/`;
+
 type ApiOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
@@ -33,7 +39,7 @@ export async function apiRequest<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   }).catch(() => {
     throw new Error(
-      `Cannot reach the CRM at ${API_BASE_URL}. Check that the CRM server is running and your device is on the same network.`
+      `Cannot reach Vaani at ${API_BASE_URL}. Check that the server is running and your device is on the same network.`
     );
   });
 
