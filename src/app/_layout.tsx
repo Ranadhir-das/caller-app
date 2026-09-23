@@ -88,6 +88,7 @@ function AppNavigator() {
           <Stack.Screen name="notices" />
         </Stack.Protected>
         <Stack.Protected guard={user?.role === 'CALLER' && !user.needs_onboarding}>
+          <Stack.Screen name="direct-dialer" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="lead-details" />
           <Stack.Screen name="call-history-details" />
@@ -95,6 +96,7 @@ function AppNavigator() {
           <Stack.Screen name="call-outcome" />
           <Stack.Screen name="dialer" />
           <Stack.Screen name="dialer-backup" />
+          <Stack.Screen name="admissions" />
         </Stack.Protected>
       </Stack>
     </>

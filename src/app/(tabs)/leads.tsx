@@ -49,6 +49,13 @@ export default function LeadsScreen() {
     { id: 'busy', label: 'Busy' },
     { id: 'call_back', label: 'Call Back' },
     { id: 'wrong_number', label: 'Wrong Number' },
+    { id: 'forwarded_calls', label: 'Forwarded Calls' },
+    { id: 'no_candidate', label: 'No Candidate' },
+    { id: 'disconnected', label: 'Disconnected' },
+    { id: 'admission_done', label: 'Admission Done' },
+    { id: 'all_waiting', label: 'Call Waiting' },
+    { id: 'not_reachable', label: 'Not Reachable' },
+    { id: 'ringing', label: 'Ringing' },
   ];
 
   const filteredLeads = useMemo(() => {

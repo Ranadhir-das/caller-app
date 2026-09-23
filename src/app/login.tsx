@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { useAuth } from "@/context/AuthContext";
 import { router } from "expo-router";
@@ -7,6 +8,7 @@ import { useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    Image,
     KeyboardAvoidingView,
     Platform,
     Pressable,
@@ -146,6 +148,11 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.content}>
+        <Image
+          source={require('@/assets/images/vaani-mark.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
         <Text style={styles.title}>Vaani</Text>
 
         <Text style={styles.subtitle}>
@@ -217,12 +224,11 @@ export default function LoginScreen() {
 
             <Text style={styles.label}>Password</Text>
 
-            <TextInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
+            <PasswordInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
               style={styles.input}
               placeholder="Enter password"
               value={password}
               onChangeText={setPassword}
-              secureTextEntry
               autoCapitalize="none"
               editable={!loading}
             />
@@ -268,6 +274,13 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: 24,
+  },
+
+  logo: {
+    width: 68,
+    height: 68,
+    alignSelf: 'center',
+    marginBottom: 12,
   },
 
   title: {

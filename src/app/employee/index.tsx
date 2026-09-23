@@ -1,3 +1,4 @@
+import { CallerPointsCard } from '@/components/CallerPointsCard';
 import { router } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,7 +22,15 @@ export default function EmployeeHomeScreen() {
           <View style={{ flex: 1 }}><Text style={styles.title}>{user?.name || user?.username}</Text><Text style={styles.subtitle}>{data?.role_label || user?.role} workspace</Text></View>
           <View style={styles.chevron} />
         </Pressable>
+      <CallerPointsCard />
         <View style={styles.actionsRow}>
+          {user?.role === 'CALLER' && !user.needs_onboarding && (
+            <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/direct-dialer')}>
+              <View style={styles.actionIcon}><Text style={styles.actionIconText}>⌨️</Text></View>
+              <Text style={styles.actionTitle}>Direct Dialer</Text>
+              <Text style={styles.actionSubtitle}>Keypad calling</Text>
+            </Pressable>
+          )}
           {user?.role === 'CALLER' && !user.needs_onboarding && <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.replace('/(tabs)')}><View style={styles.actionIcon}><Text style={styles.actionIconText}>📞</Text></View><Text style={styles.actionTitle}>Calling workspace</Text><Text style={styles.actionSubtitle}>Switch to dialer</Text></Pressable>}
           <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/chat')}><View style={styles.actionIcon}><Text style={styles.actionIconText}>💬</Text></View><Text style={styles.actionTitle}>Team chat</Text><Text style={styles.actionSubtitle}>Message your team</Text></Pressable>
           <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/notices')}><View style={styles.actionIcon}><Text style={styles.actionIconText}>📣</Text></View><Text style={styles.actionTitle}>Notices</Text><Text style={styles.actionSubtitle}>Company announcements</Text></Pressable>

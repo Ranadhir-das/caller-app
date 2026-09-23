@@ -1,5 +1,5 @@
 export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.31.191:8000/api/v1"
+  process.env.EXPO_PUBLIC_API_BASE_URL || "https://vaaniapp.co.in/api/v1"
 ).replace(/\/+$/, "");
 
 // The CRM's own app-introduction/download page, on whatever host this build
@@ -13,6 +13,10 @@ type ApiOptions = {
   body?: unknown;
   token?: string;
 };
+
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); this.name = 'ApiError'; }
+}
 
 export async function apiRequest<T>(
   endpoint: string,
@@ -58,7 +62,7 @@ export async function apiRequest<T>(
       data
     );
 
-    throw new Error(extractErrorMessage(data));
+    throw new ApiError(data ? extractErrorMessage(data) : `Request failed (HTTP ${response.status}). Please check the server endpoint.`, response.status);
   }
 
   return data as T;

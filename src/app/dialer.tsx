@@ -1,6 +1,8 @@
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { useDialerSession } from '@/context/DialerSessionContext';
 import { useLeads } from '@/context/LeadContext';
+import { useAuth } from '@/context/AuthContext';
+import { newCallId, saveCallDraft, patchCallDraft } from '@/services/callDrafts';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -18,8 +20,17 @@ import CallstateModule, {
 } from '../../modules/callstate/src/CallstateModule';
 
 export default function DialerScreen() {
+  const params = useLocalSearchParams<{ id?: string; direct?: string; phone_number?: string }>();
+  const { leads } = useLeads();
+  const { user } = useAuth();
+  const targetId = params.id || (params.direct === '1' ? params.phone_number : leads.find(lead => lead.status === 'pending')?.id);
+  return <ActiveDialer key={`${user?.id}:${params.direct}:${targetId}`} />;
+}
+
+function ActiveDialer() {
   const styles = useAppStyles(createStyles);
   const { leads } = useLeads();
+  const { user } = useAuth();
 
   const {
     pauseSession,
@@ -30,15 +41,20 @@ export default function DialerScreen() {
 
   const params = useLocalSearchParams<{
     id?: string;
+    direct?: string;
+    phone_number?: string;
+    name?: string;
   }>();
 
   // --------------------------------------------------
   // CURRENT STUDENT
   // --------------------------------------------------
 
-  const currentLead =
-    leads.find((lead) => lead.id === params.id) ??
-    leads.find((lead) => lead.status === 'pending');
+  const direct = params.direct === '1';
+  // Display target only; external numbers never create a Lead.
+  const currentLead = direct
+    ? (params.phone_number ? { id: params.id || '', name: params.name || params.phone_number, phone: params.phone_number } : undefined)
+    : leads.find((lead) => lead.id === params.id) ?? leads.find((lead) => lead.status === 'pending');
 
   // --------------------------------------------------
   // LOCAL STATE
@@ -47,6 +63,7 @@ export default function DialerScreen() {
   const [countdown, setCountdown] = useState(3);
   const [isPaused, setIsPaused] = useState(false);
   const [callStarted, setCallStarted] = useState(false);
+  const [callRequested, setCallRequested] = useState(false);
   const [callState, setCallState] =
     useState<CallState>('IDLE');
 
@@ -69,6 +86,11 @@ export default function DialerScreen() {
   const monitoringStartedRef =
     useRef(false);
 
+  const mountedRef = useRef(true);
+  const callRequestPendingRef = useRef(false);
+  const requestedRef = useRef(false);
+  const draftIdRef = useRef(newCallId());
+
   // Timing for the current phone call only.
   const callStartedAtRef =
     useRef<string | null>(null);
@@ -86,7 +108,7 @@ export default function DialerScreen() {
   // OPEN OUTCOME
   // --------------------------------------------------
 
-  const openCallOutcome = () => {
+  const openCallOutcome = async () => {
     if (!currentLead) {
       return;
     }
@@ -96,15 +118,29 @@ export default function DialerScreen() {
     }
 
     navigatingRef.current = true;
+    try {
+      if (!user) throw new Error('Please sign in to save the call.');
+      await patchCallDraft(user.id, draftIdRef.current, {
+        startedAt: callStartedAtRef.current || undefined,
+        endedAt: callEndedAtRef.current || new Date().toISOString(),
+        durationSeconds: callDurationSecondsRef.current,
+      });
+    } catch (error) {
+      navigatingRef.current = false;
+      Alert.alert('Call draft could not be saved', String(error), [{ text: 'Retry', onPress: () => { void openCallOutcome(); } }]);
+      return;
+    }
 
     console.log(
       'CALL ENDED - OPENING OUTCOME'
     );
 
+    if (!mountedRef.current) return;
     router.replace({
       pathname: '/call-outcome',
       params: {
         id: currentLead.id,
+        draft_id: draftIdRef.current,
         started_at: callStartedAtRef.current ?? '',
         ended_at:
           callEndedAtRef.current ??
@@ -117,6 +153,7 @@ export default function DialerScreen() {
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     console.log(
       'DIALER: Registering call-state listener'
     );
@@ -136,12 +173,14 @@ export default function DialerScreen() {
           // CALL CONNECTED
           // ------------------------------------------
 
-          if (event.state === 'OFFHOOK') {
+          if (event.state === 'OFFHOOK' && requestedRef.current) {
             callWasStartedRef.current = true;
 
             if (!callStartedAtRef.current) {
               callStartedAtRef.current =
                 new Date().toISOString();
+              if (user) void patchCallDraft(user.id, draftIdRef.current, { startedAt: callStartedAtRef.current })
+                .catch(error => { console.error('Call draft:', error); Alert.alert('Draft storage error', 'Keep this screen open until the call outcome is saved.'); });
 
               console.log(
                 'DIALER: Call started at:',
@@ -213,6 +252,10 @@ export default function DialerScreen() {
       );
 
     return () => {
+      mountedRef.current = false;
+      void CallstateModule.stopRecording().then((path) => {
+        console.log('CALL_RECORDING: cleanup path:', path);
+      }).catch((error) => console.warn('CALL_RECORDING: cleanup error:', error));
       console.log(
         'DIALER: Removing call-state listener'
       );
@@ -480,14 +523,22 @@ export default function DialerScreen() {
     }
 
     // Prevent duplicate call attempt.
-    if (callWasStartedRef.current) {
+    if (callWasStartedRef.current || callRequestPendingRef.current || requestedRef.current) {
       return;
     }
+
+    callRequestPendingRef.current = true;
 
     const permissionGranted =
       await requestCallPermission();
 
+    if (!mountedRef.current) {
+      callRequestPendingRef.current = false;
+      return;
+    }
+
     if (!permissionGranted) {
+      callRequestPendingRef.current = false;
       Alert.alert(
         'Permission Required',
         'Phone call permission is required to automatically call the student.'
@@ -495,6 +546,32 @@ export default function DialerScreen() {
 
       setIsPaused(true);
 
+      return;
+    }
+
+    // Recording is optional: denial/preparation failure must never prevent calling.
+    try {
+      const audioPermission = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        {
+          title: 'Local call recording test',
+          message: 'Allow microphone access to test local call recording on this device. Both sides may not be captured.',
+          buttonPositive: 'Continue',
+          buttonNegative: 'Cancel',
+        }
+      );
+      console.log('CALL_RECORDING: microphone permission:', audioPermission);
+      if (mountedRef.current && audioPermission === PermissionsAndroid.RESULTS.GRANTED) {
+        const ready = await CallstateModule.prepareRecording();
+        console.log('CALL_RECORDING: foreground service ready:', ready);
+      }
+    } catch (error) {
+      console.warn('CALL_RECORDING: preparation failed; continuing call:', error);
+    }
+
+    if (!mountedRef.current) {
+      callRequestPendingRef.current = false;
+      void CallstateModule.stopRecording().catch(console.warn);
       return;
     }
 
@@ -509,6 +586,15 @@ export default function DialerScreen() {
     callDurationSecondsRef.current = 0;
 
     try {
+      if (!user) throw new Error('Please sign in before calling.');
+      await saveCallDraft({
+        id: draftIdRef.current, userId: user.id, phone: currentLead.phone,
+        name: currentLead.name, leadId: currentLead.id || undefined, direct,
+      });
+      if (!mountedRef.current) return;
+      // Retry monitoring after the first permission grant.
+      CallstateModule.startMonitoring();
+      requestedRef.current = true;
       // Do NOT set callWasStartedRef here.
       //
       // It becomes true only when native Android
@@ -517,6 +603,7 @@ export default function DialerScreen() {
       CallstateModule.startCall(
         currentLead.phone
       );
+      setCallRequested(true);
 
       console.log(
         'DIALER: Call request sent'
@@ -528,8 +615,11 @@ export default function DialerScreen() {
       );
 
       callWasStartedRef.current = false;
+      requestedRef.current = false;
+      void CallstateModule.stopRecording().catch(console.warn);
 
       setCallStarted(false);
+      setCallRequested(false);
 
       Alert.alert(
         'Call Error',
@@ -537,6 +627,8 @@ export default function DialerScreen() {
       );
 
       setIsPaused(true);
+    } finally {
+      callRequestPendingRef.current = false;
     }
   };
 
@@ -555,7 +647,7 @@ export default function DialerScreen() {
 
     setIsPaused(true);
 
-    pauseSession();
+    if (!direct) pauseSession();
   };
 
   // --------------------------------------------------
@@ -567,7 +659,7 @@ export default function DialerScreen() {
 
     setIsPaused(false);
 
-    resumeSession();
+    if (!direct) resumeSession();
   };
 
   // --------------------------------------------------
@@ -640,6 +732,7 @@ export default function DialerScreen() {
   // --------------------------------------------------
 
   const stopDialer = () => {
+    if (direct) { router.replace('/direct-dialer'); return; }
     if (countdownRef.current) {
       clearInterval(
         countdownRef.current
@@ -717,13 +810,12 @@ export default function DialerScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>
-        Automatic Dialer
+        {direct ? 'Direct Dialer' : 'Automatic Dialer'}
       </Text>
 
       <View style={styles.positionCard}>
         <Text style={styles.positionText}>
-          Student {currentIndex + 1} /{' '}
-          {leads.length}
+          {direct ? (currentLead.id ? 'Assigned lead call' : 'External / Direct call') : `Student ${currentIndex + 1} / ${leads.length}`}
         </Text>
       </View>
 
@@ -737,7 +829,7 @@ export default function DialerScreen() {
         </Text>
       </View>
 
-      {!callStarted ? (
+      {!callStarted && !callRequested ? (
         <>
           <Text style={styles.statusLabel}>
             {isPaused
@@ -786,7 +878,7 @@ export default function DialerScreen() {
               </Pressable>
             )}
 
-            <Pressable
+            {!direct && <Pressable
               style={styles.skipButton}
               onPress={skipStudent}
             >
@@ -795,7 +887,7 @@ export default function DialerScreen() {
               >
                 Skip
               </Text>
-            </Pressable>
+            </Pressable>}
           </View>
 
           <Pressable
@@ -826,6 +918,12 @@ export default function DialerScreen() {
           <Text style={styles.infoText}>
             End the phone call to continue.
           </Text>
+          {!callStarted && <Pressable style={styles.stopButton} onPress={() => {
+            Alert.alert('Call did not start?', 'If the phone call was cancelled before Android reported OFFHOOK, return to the dialer. The incomplete draft will remain available for review.', [
+              { text: 'Stay', style: 'cancel' },
+              { text: 'Return to Dialer', onPress: () => router.replace('/direct-dialer') },
+            ]);
+          }}><Text style={styles.stopButtonText}>Call did not start?</Text></Pressable>}
         </View>
       )}
     </View>

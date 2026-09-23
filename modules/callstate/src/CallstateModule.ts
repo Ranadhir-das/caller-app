@@ -16,6 +16,13 @@ declare class CallstateModule extends NativeModule<{
   startMonitoring(): void;
   getCurrentState(): CallState;
   startCall(phoneNumber: string): void;
+  /** Android: prepare microphone foreground service BEFORE opening the Phone app. */
+  prepareRecording(): Promise<boolean>;
+  startRecording(): Promise<string | null>;
+  stopRecording(): Promise<string | null>;
+  isRecording(): boolean;
+  /** Current/last successful recording path in this process; null after failure. */
+  getRecordingPath(): string | null;
 }
 
 export default requireNativeModule<CallstateModule>('Callstate');

@@ -56,7 +56,14 @@ type CallOutcome =
   | 'no_answer'
   | 'busy'
   | 'call_back'
-  | 'wrong_number';
+  | 'wrong_number'
+  | 'forwarded_calls'
+  | 'no_candidate'
+  | 'disconnected'
+  | 'admission_done'
+  | 'all_waiting'
+  | 'not_reachable'
+  | 'ringing';
 
 type DialerSessionContextType = {
   session: DialerSession;

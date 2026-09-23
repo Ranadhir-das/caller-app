@@ -1,3 +1,5 @@
+import { getStatusLabel } from '@/utils/status';
+import { CallerPointsCard } from '@/components/CallerPointsCard';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -113,6 +115,7 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
+      <CallerPointsCard />
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
           <Text style={styles.statNumber}>
@@ -141,37 +144,64 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
 
-        <Pressable
-          style={styles.startButton}
-          onPress={() => {
-            const nextStudent = leads.find(
-              (lead) => lead.status === 'pending'
-            );
-          
-            if (!nextStudent) {
-              Alert.alert(
-                'No Students Pending',
-                'All students have already been processed.'
+        <View style={styles.quickActionsRow}>
+          <Pressable
+            style={styles.startButton}
+            onPress={() => {
+              const nextStudent = leads.find(
+                (lead) => lead.status === 'pending'
               );
-          
-              return;
-            }
-          
-            // Start a completely new session.
-            startSession();
-          
-            router.push({
-              pathname: '/dialer',
-              params: {
-                id: nextStudent.id,
-              },
-            });
-          }}
-        >
-          <Text style={styles.startButtonText}>
-            Start Dialer
-          </Text>
-        </Pressable>
+            
+              if (!nextStudent) {
+                Alert.alert(
+                  'No Students Pending',
+                  'All students have already been processed.'
+                );
+            
+                return;
+              }
+            
+              // Start a completely new session.
+              startSession();
+            
+              router.push({
+                pathname: '/dialer',
+                params: {
+                  id: nextStudent.id,
+                },
+              });
+            }}
+          >
+            <Text style={styles.startButtonText}>
+              Start Dialer
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Direct dialer keypad"
+            style={styles.directDialerButton}
+            onPress={() => router.push('/direct-dialer')}
+          >
+            <View style={styles.keypadGrid}>
+              <View style={styles.keypadRow}>
+                <View style={styles.keypadDot} />
+                <View style={styles.keypadDot} />
+                <View style={styles.keypadDot} />
+              </View>
+              <View style={styles.keypadRow}>
+                <View style={styles.keypadDot} />
+                <View style={styles.keypadDot} />
+                <View style={styles.keypadDot} />
+              </View>
+              <View style={styles.keypadRow}>
+                <View style={styles.keypadDot} />
+                <View style={styles.keypadDot} />
+                <View style={styles.keypadDot} />
+              </View>
+            </View>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -521,7 +551,7 @@ export default function HomeScreen() {
                         ? 'Call Back'
                         : call.outcome === 'wrong_number'
                         ? 'Wrong Number'
-                        : call.outcome}
+                        : getStatusLabel(call.outcome)}
                     </Text>
                   </View>
       
@@ -725,18 +755,57 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     marginBottom: 12,
   },
 
+  quickActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+
   startButton: {
+    flex: 1,
     backgroundColor: colors.primary,
     borderRadius: 14,
     paddingVertical: 17,
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
   },
 
   startButtonText: {
     color: colors.onPrimary,
     fontSize: 16,
     fontWeight: '700',
+  },
+
+  directDialerButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  keypadGrid: {
+    width: 22,
+    height: 22,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  keypadRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+
+  keypadDot: {
+    width: 4.5,
+    height: 4.5,
+    borderRadius: 2.25,
+    backgroundColor: colors.primary,
   },
 
   actionRow: {

@@ -4,20 +4,22 @@ import { Alert, Appearance } from 'react-native';
 
 const palettes = {
   light: {
-    background: '#F5F6FB', surface: '#FFFFFF', surfaceMuted: '#EFF2F8', border: '#D8DFEB',
-    text: '#20283B', secondary: '#49566E', muted: '#59677E', placeholder: '#617088',
-    primary: '#7153BB', accent: '#6751B9', onPrimary: '#FFFFFF', accentSoft: '#EDE7F8',
-    success: '#187452', successSoft: '#DEF3EA', danger: '#B3324F', dangerSoft: '#F8E3EC',
-    warning: '#886017', warningSoft: '#FFF0D5', orange: '#A44A18', orangeSoft: '#FFF0E3',
-    disabled: '#AFA4CB', shadow: '#000000',
+    background: '#F4F7FC', surface: '#FFFFFF', surfaceMuted: '#EDF2F9', border: '#D5E0F0',
+    text: '#0A1128', secondary: '#334155', muted: '#64748B', placeholder: '#94A3B8',
+    primary: '#0062FF', accent: '#00C2FF', onPrimary: '#FFFFFF', accentSoft: '#E8F1FF',
+    waveCyan: '#00C2FF', wavePurple: '#7C3AED',
+    success: '#10B981', successSoft: '#DCFCE7', danger: '#E11D48', dangerSoft: '#FFE4E6',
+    warning: '#D97706', warningSoft: '#FEF3C7', orange: '#EA580C', orangeSoft: '#FFEDD5',
+    disabled: '#94A3B8', shadow: '#000000',
   },
   dark: {
-    background: '#0C0E14', surface: '#14171F', surfaceMuted: '#232735', border: '#303647',
-    text: '#EDF0F7', secondary: '#CBD2E2', muted: '#A4AEC1', placeholder: '#939FB6',
-    primary: '#7153BB', accent: '#BEAEFF', onPrimary: '#FFFFFF', accentSoft: '#302841',
-    success: '#78DBB9', successSoft: '#1B3833', danger: '#F4A4BB', dangerSoft: '#3A2434',
-    warning: '#E9BF70', warningSoft: '#3D3322', orange: '#F3B27F', orangeSoft: '#392C23',
-    disabled: '#49405D', shadow: '#000000',
+    background: '#070B14', surface: '#0E1424', surfaceMuted: '#162038', border: '#1E2C4A',
+    text: '#F1F5F9', secondary: '#CBD5E1', muted: '#8190AC', placeholder: '#576885',
+    primary: '#0062FF', accent: '#38BDF8', onPrimary: '#FFFFFF', accentSoft: '#0F2447',
+    waveCyan: '#38BDF8', wavePurple: '#A78BFA',
+    success: '#34D399', successSoft: '#063025', danger: '#FB7185', dangerSoft: '#38111E',
+    warning: '#FBBF24', warningSoft: '#38290E', orange: '#FB923C', orangeSoft: '#381D0E',
+    disabled: '#2A3852', shadow: '#000000',
   },
 };
 

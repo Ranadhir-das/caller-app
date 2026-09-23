@@ -9,6 +9,8 @@ import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.Promise
+import expo.modules.kotlin.functions.Queues
 
 class CallstateModule : Module() {
 
@@ -21,11 +23,28 @@ class CallstateModule : Module() {
 
     Events("onCallStateChanged")
 
+    AsyncFunction("prepareRecording") { promise: Promise ->
+      val context = appContext.reactContext
+      if (context == null) promise.resolve(false)
+      else CallRecordingService.prepare(context) { success -> promise.resolve(success) }
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("startRecording") { CallRecordingService.start() }.runOnQueue(Queues.MAIN)
+    AsyncFunction("stopRecording") { CallRecordingService.stop("JS stop/unmount") }.runOnQueue(Queues.MAIN)
+    Function("isRecording") { CallRecordingService.isRecording() }
+    Function("getRecordingPath") { CallRecordingService.getRecordingPath() }
+
+    OnDestroy {
+      CallRecordingService.cleanup("Native module destroyed")
+      stopListening()
+    }
+
     OnStartObserving {
       startListening()
     }
 
     OnStopObserving {
+      CallRecordingService.cleanup("Call-state observer removed")
       stopListening()
     }
 
@@ -54,7 +73,9 @@ class CallstateModule : Module() {
           TelephonyManager::class.java
         )
 
-      when (manager.callState) {
+      val state = manager.callState
+      CallRecordingService.onCallState(state)
+      when (state) {
 
         TelephonyManager.CALL_STATE_RINGING ->
           "RINGING"
@@ -96,7 +117,12 @@ class CallstateModule : Module() {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK
       }
 
-      context.startActivity(intent)
+      try {
+        context.startActivity(intent)
+      } catch (error: Exception) {
+        CallRecordingService.cleanup("Call launch failed")
+        throw error
+      }
     }
   }
 
@@ -154,6 +180,9 @@ class CallstateModule : Module() {
             "CALLSTATE",
             "Native call state: $callState"
           )
+
+          // Recording errors are contained in the service and cannot block call events.
+          CallRecordingService.onCallState(state)
 
           sendEvent(
             "onCallStateChanged",

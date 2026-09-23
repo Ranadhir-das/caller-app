@@ -6,7 +6,14 @@ export type LeadStatus =
   | 'no_answer'
   | 'busy'
   | 'call_back'
-  | 'wrong_number';
+  | 'wrong_number'
+  | 'forwarded_calls'
+  | 'no_candidate'
+  | 'disconnected'
+  | 'admission_done'
+  | 'all_waiting'
+  | 'not_reachable'
+  | 'ringing';
 
 export type Lead = {
   batchId?: number | null;
@@ -21,6 +28,9 @@ export type Lead = {
 };
 
 export type CallHistory = {
+  isExternal?: boolean;
+  durationSeconds?: number;
+  followUpStatus?: string;
   id: string;
   leadId: string;
   leadName: string;

@@ -90,6 +90,21 @@ function mapApiStatus(
     case 'CALL_BACK':
       return 'call_back';
 
+    case 'FORWARDED_CALLS':
+      return 'forwarded_calls';
+    case 'NO_CANDIDATE':
+      return 'no_candidate';
+    case 'DISCONNECTED':
+      return 'disconnected';
+    case 'ADMISSION_DONE':
+      return 'admission_done';
+    case 'ALL_WAITING':
+      return 'all_waiting';
+    case 'NOT_REACHABLE':
+      return 'not_reachable';
+    case 'RINGING':
+      return 'ringing';
+
     case 'WRONG_NUMBER':
       return 'wrong_number';
 
@@ -190,15 +205,20 @@ export function LeadProvider({
         const [leadResponse, historyResponse] = await Promise.all([
           apiRequest<ApiLead[]>('/mobile/leads/', { token: sessionToken }),
           apiRequest<Array<{
-            id: number; lead: number; lead_name: string; lead_phone: string;
+            id: number; lead: number | null; lead_name: string | null; lead_phone: string | null;
+            phone_number: string; duration_seconds: number; followup?: { scheduled_at: string; status: string } | null;
             outcome: string; notes: string; started_at: string; ended_at: string | null;
           }>>('/calls/mine/', { token: sessionToken }),
         ]);
         if (cancelled) return;
-        setLeads(leadResponse.map(mapApiLead));
+        setLeads(leadResponse.map(lead => {
+          const pending = historyResponse.find(call => call.lead === lead.id && call.followup?.status === 'PENDING');
+          return { ...mapApiLead(lead), followUpDate: pending?.followup?.scheduled_at };
+        }));
         setCallHistory(historyResponse.map(call => ({
-          id: String(call.id), leadId: String(call.lead), leadName: call.lead_name,
-          phone: call.lead_phone, outcome: mapApiStatus(call.outcome),
+          id: String(call.id), leadId: call.lead == null ? '' : String(call.lead), leadName: call.lead_name || call.phone_number || 'External call',
+          phone: call.phone_number || call.lead_phone || '', isExternal: call.lead == null,
+          durationSeconds: call.duration_seconds, followUpDate: call.followup?.scheduled_at, followUpStatus: call.followup?.status, outcome: mapApiStatus(call.outcome),
           notes: call.notes, calledAt: call.ended_at || call.started_at,
         })));
       } catch (error) {
@@ -295,7 +315,7 @@ export function LeadProvider({
     setCallHistory(
       (currentHistory) => [
         call,
-        ...currentHistory,
+        ...currentHistory.filter(item => item.id !== call.id),
       ]
     );
   };

@@ -1,12 +1,13 @@
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
-import { getStoredToken } from '@/services/auth';
 import { useDialerSession } from '@/context/DialerSessionContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { AnimatedBackButton } from '@/components/AnimatedBackButton';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { CallDraft, CallPayload, newCallId, readCallDraft, saveCallDraft, patchCallDraft, removeCallDraft } from '@/services/callDrafts';
 import {
   Alert,
   Platform,
@@ -20,7 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLeads } from '@/context/LeadContext';
-import { apiRequest } from '@/services/api';
+import { apiRequest, ApiError } from '@/services/api';
 
 import { CallHistory, Lead } from '@/types';
 
@@ -31,6 +32,13 @@ const outcomes = [
   { id: 'busy', label: 'Busy', icon: '📞' },
   { id: 'call_back', label: 'Call Back', icon: '🔄' },
   { id: 'wrong_number', label: 'Wrong Number', icon: '❌' },
+  { id: 'forwarded_calls', label: 'Forwarded Calls', icon: '\u2197' },
+  { id: 'no_candidate', label: 'No Candidate', icon: '\uD83D\uDC64' },
+  { id: 'disconnected', label: 'Disconnected', icon: '\uD83D\uDCF4' },
+  { id: 'admission_done', label: 'Admission Done', icon: '\uD83C\uDF93' },
+  { id: 'all_waiting', label: 'Call Waiting', icon: '\u23F3' },
+  { id: 'not_reachable', label: 'Not Reachable', icon: '\uD83D\uDCF5' },
+  { id: 'ringing', label: 'Ringing', icon: '\uD83D\uDD14' },
 ];
 
 type BackendOutcome =
@@ -39,7 +47,14 @@ type BackendOutcome =
   | 'NO_ANSWER'
   | 'BUSY'
   | 'CALL_BACK'
-  | 'WRONG_NUMBER';
+  | 'WRONG_NUMBER'
+  | 'FORWARDED_CALLS'
+  | 'NO_CANDIDATE'
+  | 'DISCONNECTED'
+  | 'ADMISSION_DONE'
+  | 'ALL_WAITING'
+  | 'NOT_REACHABLE'
+  | 'RINGING';
 
 const outcomeToBackend: Record<string, BackendOutcome> = {
   interested: 'INTERESTED',
@@ -48,6 +63,13 @@ const outcomeToBackend: Record<string, BackendOutcome> = {
   busy: 'BUSY',
   call_back: 'CALL_BACK',
   wrong_number: 'WRONG_NUMBER',
+  forwarded_calls: 'FORWARDED_CALLS',
+  no_candidate: 'NO_CANDIDATE',
+  disconnected: 'DISCONNECTED',
+  admission_done: 'ADMISSION_DONE',
+  all_waiting: 'ALL_WAITING',
+  not_reachable: 'NOT_REACHABLE',
+  ringing: 'RINGING',
 };
 
 export default function CallOutcomeScreen() {
@@ -58,8 +80,10 @@ export default function CallOutcomeScreen() {
     started_at,
     ended_at,
     duration_seconds,
+    draft_id,
   } = useLocalSearchParams<{
-    id: string;
+    id?: string;
+    draft_id?: string;
     started_at?: string;
     ended_at?: string;
     duration_seconds?: string;
@@ -67,14 +91,21 @@ export default function CallOutcomeScreen() {
 
   const {
     leads,
-    updateLead,
+    refresh,
     addCallHistory,
     getNextPendingLead,
   } = useLeads();
 
   const { recordCall } = useDialerSession();
 
-  const lead = leads.find((item) => item.id === id);
+  const { user, token } = useAuth();
+  const [draft, setDraft] = useState<CallDraft | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [draftError, setDraftError] = useState('');
+  const saveLock = useRef(false);
+  const legacyId = useRef(newCallId());
+  const lead = leads.find((item) => item.id === (draft?.leadId || id));
+  const target = draft ? { name: draft.name, phone: draft.phone } : lead;
 
   const [selectedOutcome, setSelectedOutcome] = useState('');
   const [notes, setNotes] = useState('');
@@ -86,19 +117,44 @@ export default function CallOutcomeScreen() {
 
   const [saving, setSaving] = useState(false);
 
-  if (!lead) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.errorTitle}>Lead not found</Text>
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!user) return;
+      try {
+        let saved = draft_id ? await readCallDraft(user.id, draft_id) : null;
+        if (draft_id && !saved) throw new Error('This outcome draft is no longer available. Check call history.');
+        if (!saved && lead && started_at && ended_at) {
+          saved = { id: legacyId.current, userId: user.id, leadId: lead.id, phone: lead.phone,
+            name: lead.name, direct: false, startedAt: started_at, endedAt: ended_at,
+            durationSeconds: Number(duration_seconds || 0) };
+          await saveCallDraft(saved);
+        }
+        if (!saved) throw new Error('Call timing information is missing. Return to the dialer.');
+        if (active) {
+          setDraft(saved); setSelectedOutcome(saved.outcome || ''); setNotes(saved.notes || '');
+          setFollowUpDate(saved.callbackAt ? new Date(saved.callbackAt) : null); setLoaded(true);
+        }
+      } catch (error) { if (active) setDraftError(String(error)); }
+    };
+    void load();
+    return () => { active = false; };
+  }, [draft_id, user?.id]);
 
-        <AnimatedBackButton
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backButtonText}>Go Back</Text>
-        </AnimatedBackButton>
-      </SafeAreaView>
-    );
+  useEffect(() => {
+    if (!loaded || !draft || draft.payload) return;
+    void patchCallDraft(draft.userId, draft.id, {
+      outcome: selectedOutcome, notes, callbackAt: followUpDate?.toISOString(),
+    }).catch(error => { setDraftError('Unable to save edits on this device. Keep this screen open and retry Save.'); console.error(error); });
+  }, [loaded, selectedOutcome, notes, followUpDate, draft?.payload]);
+
+  if (!loaded || !target || !draft) {
+    return <SafeAreaView style={styles.container}>
+      <Text style={styles.errorTitle}>{draftError || 'Loading call outcome...'}</Text>
+      <AnimatedBackButton style={styles.backButton} onPress={() => router.replace('/direct-dialer')}>
+        <Text style={styles.backButtonText}>Back to Dialer</Text>
+      </AnimatedBackButton>
+    </SafeAreaView>;
   }
 
   const formatDate = (date: Date) => {
@@ -176,288 +232,80 @@ export default function CallOutcomeScreen() {
   };
 
   const handleSave = async () => {
-    if (!selectedOutcome) {
-      Alert.alert(
-        'Select Outcome',
-        'Please select what happened during the call.'
-      );
-      return;
+    if (saveLock.current) return;
+    if (!selectedOutcome) { Alert.alert('Select Outcome', 'Please select what happened during the call.'); return; }
+    if (selectedOutcome === 'call_back' && !followUpDate) {
+      Alert.alert('Follow-up Required', 'Please select a follow-up date and time.'); return;
     }
-
-    if (
-      selectedOutcome === 'call_back' &&
-      !followUpDate
-    ) {
-      Alert.alert(
-        'Follow-up Required',
-        'Please select both a follow-up date and time.'
-      );
-      return;
-    }
-
-    if (saving) {
-      return;
-    }
-
+    saveLock.current = true;
     setSaving(true);
-
     try {
-      const backendOutcome =
-        outcomeToBackend[selectedOutcome];
-
-      /*
-       * Timing comes from the real Android call lifecycle:
-       * OFFHOOK -> started_at
-       * IDLE    -> ended_at
-       */
-      const callStartedAt = Array.isArray(started_at)
-        ? started_at[0]
-        : started_at;
-
-      const callEndedAt = Array.isArray(ended_at)
-        ? ended_at[0]
-        : ended_at;
-
-      const durationParam = Array.isArray(duration_seconds)
-        ? duration_seconds[0]
-        : duration_seconds;
-
-      const callDurationSeconds =
-        durationParam !== undefined &&
-        durationParam !== ''
-          ? Number(durationParam)
-          : callStartedAt && callEndedAt
-            ? Math.max(
-                0,
-                Math.round(
-                  (new Date(callEndedAt).getTime() -
-                    new Date(callStartedAt).getTime()) /
-                    1000
-                )
-              )
-            : 0;
-
-      if (!callStartedAt || !callEndedAt) {
-        throw new Error(
-          'Call timing information is missing. Please make the call again.'
-        );
+      if (!draft.startedAt || !draft.endedAt || !Number.isFinite(draft.durationSeconds) || draft.durationSeconds! < 0) {
+        throw new Error('Complete call timing is unavailable. This draft is retained for review.');
       }
-
-      if (
-        !Number.isFinite(callDurationSeconds) ||
-        callDurationSeconds < 0
-      ) {
-        throw new Error(
-          'Invalid call duration. Please make the call again.'
-        );
-      }
-
-      if (!backendOutcome) {
-        throw new Error('Invalid call outcome.');
-      }
-
-      /*
-       * Django expects the lead ID as an integer.
-       */
-      const leadId = Number(lead.id);
-
-      if (!Number.isInteger(leadId)) {
-        throw new Error('Invalid lead ID.');
-      }
-
-      /*
-       * Build the Call API request.
-       *
-       * Django will:
-       * 1. Create the Call
-       * 2. Attach it to the logged-in caller
-       * 3. Update the Lead status
-       * 4. Create FollowUp when outcome = CALL_BACK
-       */
-      const callPayload: {
-        lead: number;
-        outcome: BackendOutcome;
-        started_at: string;
-        ended_at: string;
-        duration_seconds: number;
-        notes: string;
-        callback_at?: string;
-      } = {
-        lead: leadId,
-        outcome: backendOutcome,
-        started_at: callStartedAt,
-        ended_at: callEndedAt,
-        duration_seconds: Math.round(
-          callDurationSeconds
-        ),
-        notes: notes.trim(),
+      const payload: CallPayload = draft.payload || {
+        client_event_id: draft.id,
+        phone_number: draft.phone,
+        ...(draft.leadId ? { lead: Number(draft.leadId) } : {}),
+        started_at: draft.startedAt, ended_at: draft.endedAt,
+        duration_seconds: Math.round(draft.durationSeconds!),
+        outcome: outcomeToBackend[selectedOutcome], notes: notes.trim(),
+        ...(selectedOutcome === 'call_back' && followUpDate ? { callback_at: followUpDate.toISOString() } : {}),
       };
-
-      if (
-        selectedOutcome === 'call_back' &&
-        followUpDate
-      ) {
-        /*
-         * toISOString() converts the local Date to UTC.
-         * Django will parse the datetime correctly.
-         */
-        callPayload.callback_at =
-          followUpDate.toISOString();
-      }
-
-      console.log(
-        'Creating call in Django:',
-        callPayload
-      );
-
-      /*
-       * IMPORTANT:
-       * This is now the main source of truth for calls.
-       */
-      const token = await getStoredToken();
-
-      if (!token) {
-        throw new Error(
-          'Your login session has expired. Please log in again.'
-        );
-      }
-
-      await apiRequest('/calls/', {
-        method: 'POST',
-        body: callPayload,
-        token,
+      // Freeze the first submitted payload: a timeout may mean the server already saved it.
+      await patchCallDraft(draft.userId, draft.id, {
+        payload, outcome: selectedOutcome, notes, callbackAt: followUpDate?.toISOString(),
       });
-      /*
-       * The backend has already updated the lead status.
-       *
-       * We update the local LeadContext as well so the
-       * current mobile session immediately reflects the
-       * new status without requiring a full reload.
-       *
-       * NOTE:
-       * updateLead currently also sends a PATCH request.
-       * We will remove that duplicate request in the next
-       * LeadContext cleanup step.
-       */
-      const mobileStatus =
-        selectedOutcome as Lead['status'];
-
-      const savedFollowUpDate = followUpDate
-        ? `${followUpDate.getFullYear()}-${String(
-            followUpDate.getMonth() + 1
-          ).padStart(2, '0')}-${String(
-            followUpDate.getDate()
-          ).padStart(2, '0')}`
-        : undefined;
-
-      await updateLead(lead.id, {
-        status: mobileStatus,
-        notes: notes.trim(),
-        ...(savedFollowUpDate
-          ? {
-              followUpDate: savedFollowUpDate,
-            }
-          : {
-              followUpDate: undefined,
-            }),
-      });
-
-      /*
-       * Keep local call history working for the existing
-       * mobile History screen.
-       *
-       * Later we can change History to read directly
-       * from Django.
-       */
+      setDraft({ ...draft, payload });
+      if (!token) throw new Error('Please log in again. Your call draft is saved on this device.');
+      const saved = await apiRequest<{
+        id: number; lead: number | null; lead_name: string | null; phone_number: string;
+        followup: { scheduled_at: string; status: string } | null;
+      }>('/calls/', { method: 'POST', body: payload, token });
+      const mobileStatus = payload.outcome.toLowerCase() as Lead['status'];
       const newCall: CallHistory = {
-        id: `${lead.id}-${Date.now()}`,
-        leadId: lead.id,
-        leadName: lead.name,
-        phone: lead.phone,
-        outcome: mobileStatus,
-        notes: notes.trim(),
-        calledAt: callEndedAt,
-
-        ...(savedFollowUpDate
-          ? {
-              followUpDate: savedFollowUpDate,
-            }
-          : {}),
+        id: String(saved.id), leadId: saved.lead == null ? '' : String(saved.lead),
+        leadName: saved.lead_name || saved.phone_number || draft.phone,
+        phone: saved.phone_number || draft.phone, isExternal: saved.lead == null,
+        durationSeconds: payload.duration_seconds, outcome: mobileStatus,
+        notes: payload.notes, calledAt: payload.ended_at,
+        followUpDate: saved.followup?.scheduled_at, followUpStatus: saved.followup?.status,
       };
-
       addCallHistory(newCall);
-
-      /*
-       * Keep the existing dialer session behaviour.
-       */
-      recordCall(
-        selectedOutcome as Parameters<
-          typeof recordCall
-        >[0]
-      );
-
-      console.log(
-        'Call successfully saved in Django:',
-        newCall
-      );
-
-      /*
-       * Find the next pending student.
-       */
-      const nextLead =
-        getNextPendingLead(lead.id);
-
-      if (nextLead) {
-        router.replace({
-          pathname: '/dialer',
-          params: {
-            id: nextLead.id,
-          },
-        });
-      } else {
-        Alert.alert(
-          'All Students Completed',
-          'There are no more pending students.',
-          [
-            {
-              text: 'OK',
-              onPress: () =>
-                router.replace('/(tabs)'),
-            },
-          ]
-        );
-      }
+      // No second status PATCH: the call endpoint owns the lead/outcome transaction.
+      await refresh();
+      await removeCallDraft(draft.userId, draft.id);
+      if (!draft.direct) recordCall(mobileStatus as Parameters<typeof recordCall>[0]);
+      if (draft.direct) { router.replace('/direct-dialer'); return; }
+      const nextLead = getNextPendingLead(draft.leadId);
+      if (nextLead) router.replace({ pathname: '/dialer', params: { id: nextLead.id } });
+      else router.replace('/(tabs)');
     } catch (error) {
-      console.error(
-        'Failed to save call:',
-        error
-      );
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to save the call. Please try again.';
-
-      Alert.alert(
-        'Could Not Save Call',
-        message
-      );
-    } finally {
-      setSaving(false);
-    }
+      console.error('Failed to save call:', error);
+      // A validation rejection did not create a call. Allow correcting its fields.
+      // Timeouts, server errors and conflict responses must retain the original payload.
+      if (error instanceof ApiError && error.status === 400) {
+        try {
+          await patchCallDraft(draft.userId, draft.id, { payload: undefined });
+          setDraft({ ...draft, payload: undefined });
+        } catch (storageError) { console.error('Call draft:', storageError); }
+      }
+      Alert.alert('Could Not Save Call', `${error instanceof Error ? error.message : 'Please try again.'}\nYour draft is retained. Retry Save or reopen it from Direct Dialer.`);
+    } finally { saveLock.current = false; setSaving(false); }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.content}
       >
         {/* Header */}
         <View style={styles.header}>
           <AnimatedBackButton
             style={styles.backCircle}
-            onPress={() => router.back()}
+            onPress={() => router.replace('/direct-dialer')}
           >
             <Text style={styles.backIcon}>‹</Text>
           </AnimatedBackButton>
@@ -473,7 +321,7 @@ export default function CallOutcomeScreen() {
         <View style={styles.leadCard}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
-              {lead.name
+              {target.name
                 .charAt(0)
                 .toUpperCase()}
             </Text>
@@ -481,15 +329,18 @@ export default function CallOutcomeScreen() {
 
           <View style={styles.leadInfo}>
             <Text style={styles.leadName}>
-              {lead.name}
+              {target.name}
             </Text>
 
             <Text style={styles.phone}>
-              {lead.phone}
+              {target.phone}
             </Text>
           </View>
         </View>
 
+        {draftError ? <Text style={styles.errorTitle}>{draftError}</Text> : null}
+        <Text style={styles.phone}>{draft.leadId ? 'Lead Call' : 'Direct Call'} • {draft.durationSeconds ?? 0}s</Text>
+        {draft.payload ? <Text style={styles.phone}>Submission saved locally. Retry Save with the same details; check history before discarding.</Text> : null}
         {/* Outcome */}
         <Text style={styles.sectionTitle}>
           What happened?
@@ -503,6 +354,9 @@ export default function CallOutcomeScreen() {
             return (
               <Pressable
                 key={outcome.id}
+                accessibilityRole="button"
+                accessibilityLabel={outcome.label}
+                accessibilityState={{ selected, disabled: saving }}
                 style={[
                   styles.outcomeCard,
                   selected &&
@@ -513,12 +367,9 @@ export default function CallOutcomeScreen() {
                     outcome.id
                   )
                 }
-                disabled={saving}
+                disabled={saving || !!draft.payload}
               >
-                <Text style={styles.outcomeIcon}>
-                  {outcome.icon}
-                </Text>
-
+                <Text style={styles.outcomeIcon} accessible={false}>{outcome.icon}</Text>
                 <Text
                   style={[
                     styles.outcomeText,
@@ -546,7 +397,7 @@ export default function CallOutcomeScreen() {
           onChangeText={setNotes}
           multiline
           textAlignVertical="top"
-          editable={!saving}
+          editable={!saving && !draft.payload}
         />
 
         {/* Follow-up */}
@@ -562,7 +413,7 @@ export default function CallOutcomeScreen() {
               onPress={() =>
                 setShowDatePicker(true)
               }
-              disabled={saving}
+              disabled={saving || !!draft.payload}
             >
               <Text style={styles.dateButtonText}>
                 {followUpDate
@@ -592,7 +443,7 @@ export default function CallOutcomeScreen() {
 
                 setShowTimePicker(true);
               }}
-              disabled={saving}
+              disabled={saving || !!draft.payload}
             >
               <Text style={styles.dateButtonText}>
                 {followUpDate
@@ -676,15 +527,15 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
 
   content: {
-    padding: 20,
-    paddingBottom: 30,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 8,
   },
 
   backCircle: {
@@ -715,16 +566,16 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   leadCard: {
     backgroundColor: colors.surface,
     borderRadius: 16,
-    padding: 14,
+    padding: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 10,
   },
 
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
@@ -754,30 +605,30 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
 
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 9,
+    marginBottom: 6,
   },
 
   outcomeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 17,
+    marginBottom: 8,
   },
 
   outcomeCard: {
-    width: '48%',
-    minHeight: 65,
+    width: '48.8%',
+    minHeight: 44,
     backgroundColor: colors.surface,
-    borderRadius: 11,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    borderRadius: 9,
+    paddingVertical: 6,
+    paddingHorizontal: 5,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 7,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -788,13 +639,14 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
 
   outcomeIcon: {
-    color: colors.text,
-    fontSize: 19,
-    marginRight: 7,
+    fontSize: 17,
+    marginRight: 6,
   },
 
   outcomeText: {
-    fontSize: 15,
+    flexShrink: 1,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '600',
     color: colors.secondary,
     textAlign: 'center',
@@ -805,15 +657,15 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
 
   notesInput: {
-    minHeight: 82,
+    height: 60,
     backgroundColor: colors.surface,
     borderRadius: 13,
-    padding: 12,
+    padding: 10,
     fontSize: 14,
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 14,
+    marginBottom: 10,
   },
 
   followUpCard: {

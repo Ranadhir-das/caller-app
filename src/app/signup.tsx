@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { signup } from "@/services/auth";
 import { router } from "expo-router";
@@ -113,6 +114,11 @@ export default function SignupScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Image
+          source={require('@/assets/images/vaani-mark.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
         <Text style={styles.title}>Vaani</Text>
         <Text style={styles.subtitle}>Employee Signup</Text>
 
@@ -129,12 +135,11 @@ export default function SignupScreen() {
           />
 
           <Text style={styles.label}>Password</Text>
-          <TextInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
+          <PasswordInput placeholderTextColor={colors.placeholder} keyboardAppearance={mode}
             style={styles.input}
             placeholder="Choose a password"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
             autoCapitalize="none"
             editable={!loading}
           />
@@ -245,6 +250,13 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 24,
     paddingVertical: 40,
+  },
+
+  logo: {
+    width: 68,
+    height: 68,
+    alignSelf: 'center',
+    marginBottom: 12,
   },
 
   title: {

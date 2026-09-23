@@ -43,6 +43,20 @@ export default function LeadDetailsScreen() {
 
       case 'wrong_number':
         return 'Wrong Number';
+      case 'forwarded_calls':
+        return 'Forwarded Calls';
+      case 'no_candidate':
+        return 'No Candidate';
+      case 'disconnected':
+        return 'Disconnected';
+      case 'admission_done':
+        return 'Admission Done';
+      case 'all_waiting':
+        return 'Call Waiting';
+      case 'not_reachable':
+        return 'Not Reachable';
+      case 'ringing':
+        return 'Ringing';
 
       default:
         return 'Called';
@@ -279,6 +293,23 @@ export default function LeadDetailsScreen() {
           <Text style={styles.outcomeChevron}>
             ›
           </Text>
+        </Pressable>
+
+        {/* Record Admission */}
+        <Pressable
+          style={styles.admissionButton}
+          onPress={() => {
+            router.push({
+              pathname: '/admissions',
+              params: {
+                prefillLeadId: lead.id,
+              },
+            });
+          }}
+        >
+          <Text style={styles.admissionButtonIcon}>🎓</Text>
+          <Text style={styles.admissionButtonText}>Record Admission</Text>
+          <Text style={styles.admissionChevron}>›</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -553,6 +584,33 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     position: 'absolute',
     right: 16,
     fontSize: 24,
+    color: colors.accent,
+  },
+
+  admissionButton: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 8,
+  },
+  admissionButtonIcon: {
+    fontSize: 18,
+  },
+  admissionButtonText: {
+    color: colors.accent,
+    fontSize: 15,
+    fontWeight: '700',
+    flex: 1,
+  },
+  admissionChevron: {
+    fontSize: 20,
     color: colors.accent,
   },
 

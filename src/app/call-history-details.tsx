@@ -36,6 +36,20 @@ export default function CallHistoryDetailsScreen() {
 
       case 'wrong_number':
         return 'Wrong Number';
+      case 'forwarded_calls':
+        return 'Forwarded Calls';
+      case 'no_candidate':
+        return 'No Candidate';
+      case 'disconnected':
+        return 'Disconnected';
+      case 'admission_done':
+        return 'Admission Done';
+      case 'all_waiting':
+        return 'Call Waiting';
+      case 'not_reachable':
+        return 'Not Reachable';
+      case 'ringing':
+        return 'Ringing';
 
       default:
         return 'Called';
@@ -136,9 +150,9 @@ export default function CallHistoryDetailsScreen() {
     }
 
     router.push({
-      pathname: '/dialer',
+      pathname: '/direct-dialer',
       params: {
-        id: call.leadId,
+        phone_number: call.phone,
       },
     });
   };
@@ -199,6 +213,9 @@ export default function CallHistoryDetailsScreen() {
 
           <Text style={styles.studentPhone}>
             {call.phone}
+          </Text>
+          <Text style={styles.studentPhone}>
+            {call.isExternal ? 'Direct Call' : 'Lead Call'} • {call.durationSeconds ?? 0}s
           </Text>
 
           <View
@@ -298,13 +315,13 @@ export default function CallHistoryDetailsScreen() {
 
               <View style={styles.followUpContent}>
                 <Text style={styles.followUpLabel}>
-                  Scheduled Follow-up
+                  Follow-up {call.followUpStatus || 'PENDING'}
                 </Text>
 
                 <Text style={styles.followUpDate}>
                   {formatFollowUpDate(
                     call.followUpDate
-                  )}
+                  )} {formatCallTime(call.followUpDate)}
                 </Text>
               </View>
             </View>
