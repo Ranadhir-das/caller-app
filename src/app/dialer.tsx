@@ -89,6 +89,7 @@ function ActiveDialer() {
   const mountedRef = useRef(true);
   const callRequestPendingRef = useRef(false);
   const requestedRef = useRef(false);
+  const recordingArmedRef = useRef(false);
   const draftIdRef = useRef(newCallId());
 
   // Timing for the current phone call only.
@@ -118,12 +119,20 @@ function ActiveDialer() {
     }
 
     navigatingRef.current = true;
+    let recordingPath: string | undefined;
+    if (recordingArmedRef.current) {
+      try {
+        // Use the existing idempotent stop method and wait for the file to close.
+        recordingPath = (await CallstateModule.stopRecording()) || undefined;
+      } catch (error) { console.warn('RECORDING_UPLOAD: could not obtain recording path', error); }
+    }
     try {
       if (!user) throw new Error('Please sign in to save the call.');
       await patchCallDraft(user.id, draftIdRef.current, {
         startedAt: callStartedAtRef.current || undefined,
         endedAt: callEndedAtRef.current || new Date().toISOString(),
         durationSeconds: callDurationSecondsRef.current,
+        recordingPath,
       });
     } catch (error) {
       navigatingRef.current = false;
@@ -563,6 +572,7 @@ function ActiveDialer() {
       console.log('CALL_RECORDING: microphone permission:', audioPermission);
       if (mountedRef.current && audioPermission === PermissionsAndroid.RESULTS.GRANTED) {
         const ready = await CallstateModule.prepareRecording();
+        recordingArmedRef.current = ready;
         console.log('CALL_RECORDING: foreground service ready:', ready);
       }
     } catch (error) {

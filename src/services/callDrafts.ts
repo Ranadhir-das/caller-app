@@ -10,6 +10,12 @@ export type CallDraft = {
   id: string; userId: number; phone: string; name: string; leadId?: string;
   direct: boolean; startedAt?: string; endedAt?: string; durationSeconds?: number;
   outcome?: string; notes?: string; callbackAt?: string; payload?: CallPayload;
+  recordingPath?: string;
+  savedCallId?: number;
+  recordingStatus?: 'pending' | 'uploaded';
+  recordingAttempts?: number;
+  recordingError?: string;
+  recordingQueuedAt?: string;
 };
 const prefix = (userId: number) => `@call-draft:${encodeURIComponent(API_BASE_URL)}:${userId}:`;
 const key = (userId: number, id: string) => prefix(userId) + id;

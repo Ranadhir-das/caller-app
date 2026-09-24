@@ -1,5 +1,5 @@
 export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || "https://vaaniapp.co.in/api/v1"
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.58.15.156:8000/api/v1"
 ).replace(/\/+$/, "");
 
 // The CRM's own app-introduction/download page, on whatever host this build

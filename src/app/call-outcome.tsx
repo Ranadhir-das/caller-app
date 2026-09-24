@@ -8,6 +8,7 @@ import { AnimatedBackButton } from '@/components/AnimatedBackButton';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { CallDraft, CallPayload, newCallId, readCallDraft, saveCallDraft, patchCallDraft, removeCallDraft } from '@/services/callDrafts';
+import { uploadDraftRecording } from '@/services/recordingUploads';
 import {
   Alert,
   Platform,
@@ -239,6 +240,7 @@ export default function CallOutcomeScreen() {
     }
     saveLock.current = true;
     setSaving(true);
+    let createdCallId: number | undefined;
     try {
       if (!draft.startedAt || !draft.endedAt || !Number.isFinite(draft.durationSeconds) || draft.durationSeconds! < 0) {
         throw new Error('Complete call timing is unavailable. This draft is retained for review.');
@@ -262,6 +264,19 @@ export default function CallOutcomeScreen() {
         id: number; lead: number | null; lead_name: string | null; phone_number: string;
         followup: { scheduled_at: string; status: string } | null;
       }>('/calls/', { method: 'POST', body: payload, token });
+      createdCallId = saved.id;
+      await patchCallDraft(draft.userId, draft.id, { savedCallId: saved.id,
+        ...(draft.recordingPath ? { recordingStatus: 'pending', recordingQueuedAt: new Date().toISOString() } : {}),
+      });
+      if (draft.recordingPath) {
+        try { await uploadDraftRecording(draft.userId, draft.id, token); }
+        catch (error) {
+          console.warn('RECORDING_UPLOAD: retained for retry', error);
+          Alert.alert('Call saved; recording pending', 'Your call and follow-up are saved. The recording remains on this device. Retry it from Direct Dialer.');
+        }
+      } else {
+        await removeCallDraft(draft.userId, draft.id);
+      }
       const mobileStatus = payload.outcome.toLowerCase() as Lead['status'];
       const newCall: CallHistory = {
         id: String(saved.id), leadId: saved.lead == null ? '' : String(saved.lead),
@@ -274,7 +289,6 @@ export default function CallOutcomeScreen() {
       addCallHistory(newCall);
       // No second status PATCH: the call endpoint owns the lead/outcome transaction.
       await refresh();
-      await removeCallDraft(draft.userId, draft.id);
       if (!draft.direct) recordCall(mobileStatus as Parameters<typeof recordCall>[0]);
       if (draft.direct) { router.replace('/direct-dialer'); return; }
       const nextLead = getNextPendingLead(draft.leadId);
@@ -290,7 +304,8 @@ export default function CallOutcomeScreen() {
           setDraft({ ...draft, payload: undefined });
         } catch (storageError) { console.error('Call draft:', storageError); }
       }
-      Alert.alert('Could Not Save Call', `${error instanceof Error ? error.message : 'Please try again.'}\nYour draft is retained. Retry Save or reopen it from Direct Dialer.`);
+      Alert.alert(createdCallId ? 'Call saved; local completion failed' : 'Could Not Save Call',
+        `${createdCallId ? `Call #${createdCallId} is already saved in Django. ` : ''}${error instanceof Error ? error.message : 'Please try again.'}\nReopen the saved draft from Direct Dialer to retry safely.`);
     } finally { saveLock.current = false; setSaving(false); }
   };
 

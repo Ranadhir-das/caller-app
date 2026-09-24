@@ -16,6 +16,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLeads } from '@/context/LeadContext';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { apiRequest } from '@/services/api';
+import { uploadDraftRecording } from '@/services/recordingUploads';
 import { listCallDrafts, removeCallDraft, type CallDraft } from '@/services/callDrafts';
 
 const KEYPAD_ROWS = [
@@ -298,7 +299,7 @@ export default function DirectDialerScreen() {
             </View>
 
             {drafts.map((draft) => (
-              <View key={draft.id} style={styles.draftCard}>
+              <View key={draft.id} style={[styles.draftCard, !!draft.savedCallId && { flexDirection: 'column', alignItems: 'stretch', gap: 8 }]}>
                 <View style={styles.draftInfo}>
                   <Text style={styles.draftName}>{draft.name || draft.phone}</Text>
                   <Text style={styles.draftSub}>
@@ -308,12 +309,12 @@ export default function DirectDialerScreen() {
                           minute: '2-digit',
                         })
                       : 'Saved'}{' '}
-                    • {draft.endedAt ? 'Ready to submit' : 'Timing incomplete'}
+                    • {draft.savedCallId ? 'Call saved' : draft.endedAt ? 'Ready to submit' : 'Timing incomplete'}
                   </Text>
                 </View>
 
                 <View style={styles.draftActions}>
-                  {draft.endedAt ? (
+                  {draft.endedAt && !draft.savedCallId ? (
                     <Pressable
                       style={styles.continueButton}
                       onPress={() =>
@@ -327,7 +328,21 @@ export default function DirectDialerScreen() {
                     </Pressable>
                   ) : null}
 
-                  <Pressable
+                  {!!draft.savedCallId && !!draft.recordingPath && <View>
+                    <Text style={styles.draftSub}>Call #{draft.savedCallId} saved. {draft.recordingStatus === 'uploaded' ? 'Cleanup pending' : 'Recording pending'}; attempts: {draft.recordingAttempts || 0}</Text>
+                    {!!draft.recordingError && <Text style={styles.draftSub}>{draft.recordingError}</Text>}
+                    <Pressable accessibilityRole="button" style={[styles.continueButton, { minHeight: 44, justifyContent: 'center' }]} disabled={busy} onPress={async () => {
+                      if (!user || !token || busy) return;
+                      setBusy(true);
+                      try { await uploadDraftRecording(user.id, draft.id, token); }
+                      catch (error) { Alert.alert('Recording retained', String(error)); }
+                      finally {
+                        setBusy(false);
+                        void listCallDrafts(user.id).then(setDrafts).catch(console.warn);
+                      }
+                    }}><Text style={styles.continueButtonText}>Retry recording / cleanup</Text></Pressable>
+                  </View>}
+                  {!draft.recordingPath && <Pressable
                     style={styles.discardButton}
                     onPress={() =>
                       Alert.alert(
@@ -349,7 +364,7 @@ export default function DirectDialerScreen() {
                     }
                   >
                     <Text style={styles.discardButtonText}>Discard</Text>
-                  </Pressable>
+                  </Pressable>}
                 </View>
               </View>
             ))}
