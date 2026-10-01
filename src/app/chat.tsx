@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import * as WebBrowser from "expo-web-browser";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -18,13 +23,23 @@ import { useAuth } from "@/context/AuthContext";
 import { useAppTheme, useAppStyles, AppColors } from "@/context/AppThemeContext";
 import { AnimatedBackButton } from "@/components/AnimatedBackButton";
 import {
+  ChatAttachment,
   ChatChannel,
   ChatMessage,
   chatSocketUrl,
   listChannels,
   listMessages,
+  resolveAttachmentUrl,
   sendMessage,
+  sendMessageWithAttachment,
 } from "@/services/chat";
+
+type PendingAttachment = {
+  uri: string;
+  name: string;
+  type: string;
+  size?: number;
+};
 
 export default function ChatScreen() {
   const { user, token } = useAuth();
@@ -35,6 +50,8 @@ export default function ChatScreen() {
   const [activeChannel, setActiveChannel] = useState<ChatChannel | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
@@ -83,23 +100,118 @@ export default function ChatScreen() {
     }
   }, [messages.length]);
 
+  const handlePickImage = async () => {
+    setShowAttachMenu(false);
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!res.canceled && res.assets && res.assets[0]) {
+        const asset = res.assets[0];
+        const filename = asset.fileName || asset.uri.split("/").pop() || "image.jpg";
+        setPendingAttachment({
+          uri: asset.uri,
+          name: filename,
+          type: asset.mimeType || "image/jpeg",
+          size: asset.fileSize,
+        });
+      }
+    } catch {
+      Alert.alert("Picker Error", "Could not pick image.");
+    }
+  };
+
+  const handlePickVideo = async () => {
+    setShowAttachMenu(false);
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["videos"],
+        allowsEditing: false,
+      });
+      if (!res.canceled && res.assets && res.assets[0]) {
+        const asset = res.assets[0];
+        const filename = asset.fileName || asset.uri.split("/").pop() || "video.mp4";
+        setPendingAttachment({
+          uri: asset.uri,
+          name: filename,
+          type: asset.mimeType || "video/mp4",
+          size: asset.fileSize,
+        });
+      }
+    } catch {
+      Alert.alert("Picker Error", "Could not pick video.");
+    }
+  };
+
+  const handlePickDocument = async () => {
+    setShowAttachMenu(false);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ["application/pdf", "*/*"],
+        copyToCacheDirectory: true,
+      });
+      if (!res.canceled && res.assets && res.assets[0]) {
+        const asset = res.assets[0];
+        setPendingAttachment({
+          uri: asset.uri,
+          name: asset.name,
+          type: asset.mimeType || "application/pdf",
+          size: asset.size,
+        });
+      }
+    } catch {
+      Alert.alert("Picker Error", "Could not pick document.");
+    }
+  };
+
+  const handleOpenAttachment = async (att: ChatAttachment) => {
+    const fullUrl = resolveAttachmentUrl(att.file_url);
+    try {
+      await WebBrowser.openBrowserAsync(fullUrl);
+    } catch {
+      Alert.alert("Unable to open file", "Could not open attachment.");
+    }
+  };
+
   const handleSend = useCallback(async () => {
     const body = text.trim();
-    if (!body || !token || !activeChannel || sending) return;
+    if ((!body && !pendingAttachment) || !token || !activeChannel || sending) return;
+
+    const currentText = body;
+    const currentAttachment = pendingAttachment;
+
     setText("");
+    setPendingAttachment(null);
     setSending(true);
+
     try {
-      const message = await sendMessage(token, activeChannel.id, body);
+      let message: ChatMessage;
+      if (currentAttachment) {
+        message = await sendMessageWithAttachment(
+          token,
+          activeChannel.id,
+          currentText,
+          currentAttachment
+        );
+      } else {
+        message = await sendMessage(token, activeChannel.id, currentText);
+      }
+
       setMessages((current) =>
         current.some((m) => m.id === message.id) ? current : [...current, message]
       );
     } catch (e) {
-      setText(body);
+      setText(currentText);
+      setPendingAttachment(currentAttachment);
       Alert.alert("Chat", e instanceof Error ? e.message : "Message could not be sent.");
     } finally {
       setSending(false);
     }
-  }, [text, token, activeChannel, sending]);
+  }, [text, pendingAttachment, token, activeChannel, sending]);
+
+  const canSend = (text.trim().length > 0 || pendingAttachment !== null) && !sending;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -139,24 +251,134 @@ export default function ChatScreen() {
             data={messages}
             keyExtractor={(m) => String(m.id)}
             contentContainerStyle={styles.thread}
-            renderItem={({ item }) => (
-              <View style={[styles.bubble, item.sender_id === user?.id && styles.bubbleMine]}>
-                {item.sender_id !== user?.id && <Text style={styles.sender}>{item.sender_name}</Text>}
-                <Text style={[styles.messageText, item.sender_id === user?.id && styles.messageTextMine]}>{item.text}</Text>
-                <Text style={[styles.time, item.sender_id === user?.id && styles.timeMine]}>
-                  {new Date(item.created_at).toLocaleString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              </View>
-            )}
+            renderItem={({ item }) => {
+              const isMine = item.sender_id === user?.id;
+              return (
+                <View style={[styles.bubble, isMine && styles.bubbleMine]}>
+                  {!isMine && <Text style={styles.sender}>{item.sender_name}</Text>}
+
+                  {/* Text */}
+                  {!!item.text && (
+                    <Text style={[styles.messageText, isMine && styles.messageTextMine]}>
+                      {item.text}
+                    </Text>
+                  )}
+
+                  {/* Attachments */}
+                  {item.attachments && item.attachments.length > 0 && (
+                    <View style={styles.bubbleAttachments}>
+                      {item.attachments.map((att) => {
+                        const isImg = att.mime_type.includes("image");
+                        const isVid = att.mime_type.includes("video");
+                        const fullUrl = resolveAttachmentUrl(att.file_url);
+
+                        if (isImg) {
+                          return (
+                            <Pressable
+                              key={att.id}
+                              onPress={() => handleOpenAttachment(att)}
+                              style={styles.chatImageWrap}
+                            >
+                              <Image
+                                source={{ uri: fullUrl }}
+                                style={styles.chatImage}
+                                resizeMode="cover"
+                              />
+                            </Pressable>
+                          );
+                        }
+
+                        return (
+                          <Pressable
+                            key={att.id}
+                            onPress={() => handleOpenAttachment(att)}
+                            style={[
+                              styles.fileCard,
+                              isMine ? styles.fileCardMine : styles.fileCardTheirs,
+                            ]}
+                          >
+                            <Text style={styles.fileIcon}>{isVid ? "🎥" : "📄"}</Text>
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={[styles.fileName, isMine && { color: colors.onPrimary }]}
+                                numberOfLines={1}
+                              >
+                                {att.original_name}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.fileMeta,
+                                  isMine ? { color: "rgba(255,255,255,0.7)" } : { color: colors.muted },
+                                ]}
+                              >
+                                {isVid ? "Video" : "Document"} · {(att.file_size / 1024).toFixed(0)} KB
+                              </Text>
+                            </View>
+                            <Text style={[styles.fileArrow, isMine && { color: colors.onPrimary }]}>
+                              ↗
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  <Text style={[styles.time, isMine && styles.timeMine]}>
+                    {new Date(item.created_at).toLocaleString("en-IN", {
+                      day: "2-digit",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                </View>
+              );
+            }}
             ListEmptyComponent={<Text style={styles.subtitle}>No messages yet. Say hello.</Text>}
           />
 
+          {/* Pending attachment preview banner */}
+          {pendingAttachment && (
+            <View style={styles.previewBanner}>
+              {pendingAttachment.type.includes("image") ? (
+                <Image source={{ uri: pendingAttachment.uri }} style={styles.previewThumb} />
+              ) : (
+                <View style={styles.previewIconBox}>
+                  <Text style={{ fontSize: 18 }}>
+                    {pendingAttachment.type.includes("video") ? "🎥" : "📄"}
+                  </Text>
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.previewName} numberOfLines={1}>
+                  {pendingAttachment.name}
+                </Text>
+                {pendingAttachment.size ? (
+                  <Text style={styles.previewSize}>
+                    {(pendingAttachment.size / 1024).toFixed(0)} KB
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable
+                onPress={() => setPendingAttachment(null)}
+                style={styles.previewRemoveBtn}
+                hitSlop={8}
+              >
+                <Text style={styles.previewRemoveText}>✕</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* Compose Bar */}
           <View style={styles.compose}>
+            <Pressable
+              style={styles.clipButton}
+              onPress={() => setShowAttachMenu(true)}
+              hitSlop={8}
+            >
+              <Text style={styles.clipIcon}>📎</Text>
+            </Pressable>
+
             <TextInput
               style={styles.input}
               placeholder={activeChannel ? `Message #${activeChannel.name}` : "Message"}
@@ -166,16 +388,65 @@ export default function ChatScreen() {
               onChangeText={setText}
               multiline
             />
+
             <Pressable
-              style={[styles.sendButton, (!text.trim() || sending) && { opacity: 0.5 }]}
+              style={[styles.sendButton, !canSend && { opacity: 0.5 }]}
               onPress={handleSend}
-              disabled={!text.trim() || sending}
+              disabled={!canSend}
             >
               <Text style={styles.sendButtonText}>Send</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
       )}
+
+      {/* Attachment Options Modal */}
+      <Modal
+        visible={showAttachMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAttachMenu(false)}
+      >
+        <Pressable
+          style={styles.menuOverlay}
+          onPress={() => setShowAttachMenu(false)}
+        >
+          <View style={styles.menuBox}>
+            <Text style={styles.menuTitle}>Share in Chat</Text>
+
+            <Pressable style={styles.menuItem} onPress={handlePickImage}>
+              <Text style={styles.menuIcon}>🖼</Text>
+              <View>
+                <Text style={styles.menuItemLabel}>Photo / Image</Text>
+                <Text style={styles.menuItemSub}>JPG, PNG, WebP</Text>
+              </View>
+            </Pressable>
+
+            <Pressable style={styles.menuItem} onPress={handlePickVideo}>
+              <Text style={styles.menuIcon}>🎥</Text>
+              <View>
+                <Text style={styles.menuItemLabel}>Video</Text>
+                <Text style={styles.menuItemSub}>MP4, MOV, WebM</Text>
+              </View>
+            </Pressable>
+
+            <Pressable style={styles.menuItem} onPress={handlePickDocument}>
+              <Text style={styles.menuIcon}>📄</Text>
+              <View>
+                <Text style={styles.menuItemLabel}>Document / PDF</Text>
+                <Text style={styles.menuItemSub}>PDF files</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.menuCancel}
+              onPress={() => setShowAttachMenu(false)}
+            >
+              <Text style={styles.menuCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -191,7 +462,7 @@ const makeStyles = (c: AppColors) =>
     chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, backgroundColor: c.surface, alignSelf: "flex-start" },
     thread: { padding: 16, gap: 10, flexGrow: 1 },
     bubble: {
-      maxWidth: "80%",
+      maxWidth: "85%",
       alignSelf: "flex-start",
       backgroundColor: c.surface,
       borderWidth: 1,
@@ -199,6 +470,7 @@ const makeStyles = (c: AppColors) =>
       borderRadius: 16,
       borderBottomLeftRadius: 4,
       padding: 10,
+      gap: 6,
     },
     bubbleMine: {
       alignSelf: "flex-end",
@@ -210,15 +482,110 @@ const makeStyles = (c: AppColors) =>
     sender: { fontSize: 11, fontWeight: "700", color: c.accent, marginBottom: 2 },
     messageText: { fontSize: 14, color: c.text, lineHeight: 20 },
     messageTextMine: { color: c.onPrimary },
-    time: { fontSize: 9, color: c.muted, marginTop: 4, alignSelf: "flex-end" },
+    bubbleAttachments: {
+      gap: 6,
+      marginTop: 2,
+    },
+    chatImageWrap: {
+      borderRadius: 10,
+      overflow: "hidden",
+      backgroundColor: c.surfaceMuted,
+    },
+    chatImage: {
+      width: 220,
+      height: 160,
+      borderRadius: 10,
+    },
+    fileCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      padding: 8,
+      borderRadius: 8,
+    },
+    fileCardMine: {
+      backgroundColor: "rgba(255,255,255,0.15)",
+    },
+    fileCardTheirs: {
+      backgroundColor: c.surfaceMuted,
+    },
+    fileIcon: {
+      fontSize: 20,
+    },
+    fileName: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: c.text,
+    },
+    fileMeta: {
+      fontSize: 10,
+      marginTop: 1,
+    },
+    fileArrow: {
+      fontSize: 14,
+      color: c.muted,
+      marginLeft: 4,
+    },
+    time: { fontSize: 9, color: c.muted, marginTop: 2, alignSelf: "flex-end" },
     timeMine: { color: c.onPrimary, opacity: 0.75 },
+    previewBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      padding: 10,
+      backgroundColor: c.surface,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+    },
+    previewThumb: {
+      width: 36,
+      height: 36,
+      borderRadius: 6,
+      backgroundColor: c.surfaceMuted,
+    },
+    previewIconBox: {
+      width: 36,
+      height: 36,
+      borderRadius: 6,
+      backgroundColor: c.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    previewName: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: c.text,
+    },
+    previewSize: {
+      fontSize: 10,
+      color: c.muted,
+    },
+    previewRemoveBtn: {
+      padding: 6,
+    },
+    previewRemoveText: {
+      fontSize: 14,
+      color: c.muted,
+      fontWeight: "700",
+    },
     compose: {
       flexDirection: "row",
       alignItems: "flex-end",
-      gap: 10,
+      gap: 8,
       padding: 12,
       borderTopWidth: 1,
       borderTopColor: c.border,
+      backgroundColor: c.background,
+    },
+    clipButton: {
+      padding: 10,
+      borderRadius: 10,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    clipIcon: {
+      fontSize: 16,
     },
     input: {
       flex: 1,
@@ -232,6 +599,61 @@ const makeStyles = (c: AppColors) =>
       backgroundColor: c.background,
       fontSize: 15,
     },
-    sendButton: { backgroundColor: c.primary, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12 },
+    sendButton: {
+      backgroundColor: c.primary,
+      borderRadius: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
     sendButtonText: { color: c.onPrimary, fontWeight: "600", fontSize: 14 },
+    menuOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "flex-end",
+    },
+    menuBox: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 20,
+      gap: 12,
+    },
+    menuTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: c.text,
+      marginBottom: 4,
+    },
+    menuItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      backgroundColor: c.background,
+    },
+    menuIcon: {
+      fontSize: 22,
+    },
+    menuItemLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: c.text,
+    },
+    menuItemSub: {
+      fontSize: 11,
+      color: c.muted,
+      marginTop: 1,
+    },
+    menuCancel: {
+      paddingVertical: 12,
+      alignItems: "center",
+      marginTop: 4,
+    },
+    menuCancelText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: c.muted,
+    },
   });

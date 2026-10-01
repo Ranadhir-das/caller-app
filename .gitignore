@@ -48,3 +48,18 @@ example
 
 # Built APK
 *.apk
+
+# Private service-account credentials (not Android google-services.json)
+*-firebase-adminsdk-*.json
+*service-account*.json
+*serviceAccount*.json
+/credentials.json
+# Firebase / Google service-account private keys
+*service-account*.json
+*firebase-adminsdk*.json
+# Local recording audit artifacts
+.recording-audit-*.log
+.recording-signal-native.log
+
+# Local reference images
+*.jpeg

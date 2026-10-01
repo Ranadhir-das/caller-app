@@ -1,4 +1,5 @@
 import { File } from 'expo-file-system';
+import { fetch } from 'expo/fetch';
 import { API_BASE_URL } from './api';
 import { patchCallDraft, readCallDraft, removeCallDraft } from './callDrafts';
 
@@ -30,7 +31,8 @@ export async function uploadDraftRecording(userId: number, draftId: string, toke
       if (!file.exists || !file.size) throw new Error('Local recording is missing or empty. The saved call is unaffected.');
       const size = file.size;
       const body = new FormData();
-      body.append('recording', { uri: file.uri, name: 'recording.m4a', type: 'audio/mp4' } as unknown as Blob);
+      // Expo fetch accepts File/Blob parts, not React Native's legacy { uri } object.
+      body.append('recording', file);
       body.append('duration_seconds', String(draft.durationSeconds || 0));
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000);
@@ -40,9 +42,12 @@ export async function uploadDraftRecording(userId: number, draftId: string, toke
           method: 'POST', headers: { Authorization: `Token ${token}`, Accept: 'application/json' },
           body, signal: controller.signal,
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.detail || `Recording upload failed (HTTP ${response.status}).`);
-        if (result.call_id !== draft.savedCallId || result.file_size !== size || !result.sha256) {
+        const result = await response.json().catch(() => null);
+        if (!response.ok) {
+          const detail = result?.detail || result?.recording?.[0] || result?.duration_seconds?.[0];
+          throw new Error(`Recording upload failed (HTTP ${response.status}).${typeof detail === 'string' ? ` ${detail}` : ''}`);
+        }
+        if (result?.call_id !== draft.savedCallId || result?.file_size !== size || !result?.sha256) {
           throw new Error('Upload confirmation did not match this recording. The file was kept.');
         }
         // Persist the server confirmation before attempting local cleanup.

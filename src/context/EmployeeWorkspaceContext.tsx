@@ -9,7 +9,7 @@ export type Workspace = {
   attendance: { id: number; date: string; checked_in: string | null; checked_out: string | null }[];
   leaves: { id: number; start_date: string; end_date: string; reason: string; status: string; review_note: string }[];
   projects: { id: number; title: string; description: string; due_date: string | null; status: string }[];
-  reports: { id: number; date: string; notes: string; work_link: string; has_photo: boolean }[];
+  reports: { id: number; date: string; notes: string; work_link: string; work_links?: string[]; has_photo: boolean }[];
   holidays: { id: number; name: string; date: string }[];
   photo_requests: { id: number; action: string; status: string; created_at: string; review_note: string }[];
   enrolled: boolean;

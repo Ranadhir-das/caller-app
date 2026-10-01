@@ -23,6 +23,8 @@ declare class CallstateModule extends NativeModule<{
   isRecording(): boolean;
   /** Current/last successful recording path in this process; null after failure. */
   getRecordingPath(): string | null;
+  /** Optional until the updated native development build is installed. */
+  getRecordingWarning?(): string | null;
 }
 
 export default requireNativeModule<CallstateModule>('Callstate');

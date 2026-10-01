@@ -26,6 +26,32 @@ class CallRecordingService : Service() {
   private var output: File? = null
   private var startedAt = 0L
   private var sawOffhook = false
+  private var peakAmplitude = 0
+  private var amplitudeSamples = 0
+  private var wasSilenced = false
+  private fun sampleSignal() {
+    val active = recorder ?: return
+    if (!recording) return
+    try {
+      peakAmplitude = maxOf(peakAmplitude, active.maxAmplitude)
+      amplitudeSamples++
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+        active.activeRecordingConfiguration?.isClientSilenced == true) {
+        if (!wasSilenced) Log.w(TAG, "Android is silencing microphone capture during this call")
+        wasSilenced = true
+      }
+    } catch (error: Exception) {
+      // Diagnostics must never interrupt a call or change audio routing.
+      Log.w(TAG, "Cannot sample recording signal", error)
+    }
+  }
+  private val signalCheck = object : Runnable {
+    override fun run() {
+      if (!recording || instance !== this@CallRecordingService) return
+      sampleSignal()
+      main.postDelayed(this, 500)
+    }
+  }
   private val armTimeout = Runnable { finish("No OFFHOOK within 60 seconds") }
   // Cleanup fallback if a vendor delays/drops the module's IDLE callback.
   private val idleCheck = object : Runnable {
@@ -55,6 +81,7 @@ class CallRecordingService : Service() {
     private var ready: ((Boolean) -> Unit)? = null
     @Volatile private var recording = false
     @Volatile private var path: String? = null
+    @Volatile private var warning: String? = null
 
     // Called on the main queue while the caller activity is still visible.
     fun prepare(context: Context, callback: (Boolean) -> Unit) {
@@ -70,6 +97,7 @@ class CallRecordingService : Service() {
         return
       }
       path = null
+      warning = null
       ready = callback
       try {
         ContextCompat.startForegroundService(context, Intent(context, CallRecordingService::class.java))
@@ -123,6 +151,7 @@ class CallRecordingService : Service() {
     fun cleanup(reason: String) { main.post { stop(reason) } }
     fun isRecording() = recording
     fun getRecordingPath() = path
+    fun getRecordingWarning() = warning
   }
 
   override fun onCreate() {
@@ -191,6 +220,9 @@ class CallRecordingService : Service() {
       next.start()
       recording = true
       startedAt = SystemClock.elapsedRealtime()
+      // Prime getMaxAmplitude; subsequent reads cover the elapsed interval.
+      try { next.maxAmplitude } catch (_: Exception) { }
+      main.postDelayed(signalCheck, 500)
       path = output!!.absolutePath
       Log.i(TAG, "Recording started source=MIC format=AAC/M4A path=$path; two-way audio unverified")
       return path
@@ -202,6 +234,8 @@ class CallRecordingService : Service() {
   }
 
   private fun releaseRecorder(reason: String, discard: Boolean = false) {
+    main.removeCallbacks(signalCheck)
+    sampleSignal()
     val active = recorder ?: return
     recorder = null
     val durationMs = if (recording) SystemClock.elapsedRealtime() - startedAt else 0L
@@ -221,6 +255,13 @@ class CallRecordingService : Service() {
       path = null
       Log.w(TAG, "Recording stopped reason=$reason durationMs=$durationMs; no valid recording")
     } else {
+      warning = when {
+        wasSilenced -> "Android blocked microphone audio during some or all of this call. The recording may be silent or incomplete."
+        amplitudeSamples >= 3 && peakAmplitude == 0 -> "No microphone signal was detected. This device may block cellular call recording."
+        else -> null
+      }
+      Log.i(TAG, "Recording signal peak=$peakAmplitude samples=$amplitudeSamples androidSilenced=$wasSilenced; nonzero signal does not verify both voices")
+      warning?.let { Log.w(TAG, it) }
       Log.i(TAG, "Recording stopped reason=$reason durationMs=$durationMs bytes=${file.length()} path=$path; listen to verify both sides")
     }
     output = null

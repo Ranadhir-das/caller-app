@@ -10,12 +10,14 @@ import { AppState } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 
 import {
+  AvailableLead,
   CallHistory,
   Lead,
   LeadStatus,
 } from '@/types';
 
 import {
+  ApiError,
   apiRequest,
 } from '@/services/api';
 
@@ -37,7 +39,7 @@ type UpdateLeadData = {
 // DJANGO API TYPE
 // --------------------------------------------------
 
-type ApiLead = {
+export type ApiLead = {
   batch_id?: number | null;
   batch_name?: string;
   id: number;
@@ -117,7 +119,7 @@ function mapApiStatus(
 // API → APP LEAD
 // --------------------------------------------------
 
-function mapApiLead(
+export function mapApiLead(
   lead: ApiLead
 ): Lead {
   return {
@@ -133,6 +135,54 @@ function mapApiLead(
 }
 
 // --------------------------------------------------
+// API AVAILABLE LEAD TYPE & MAPPING
+// --------------------------------------------------
+
+type ApiAvailableLead = {
+  id: number;
+  name: string;
+  service?: {
+    id: number;
+    name: string;
+    code: string;
+    description?: string;
+  } | null;
+  source?: string;
+  campaign?: string;
+  status?: string;
+  status_display?: string;
+  phone_masked?: string;
+  queue_category?: string;
+  queue_priority?: number;
+  created_at: string;
+};
+
+function mapApiAvailableLead(
+  item: ApiAvailableLead
+): AvailableLead {
+  return {
+    id: String(item.id),
+    name: item.name,
+    phoneMasked: item.phone_masked,
+    service: item.service
+      ? {
+          id: item.service.id,
+          name: item.service.name,
+          code: item.service.code,
+          description: item.service.description,
+        }
+      : null,
+    source: item.source,
+    campaign: item.campaign,
+    status: item.status,
+    statusDisplay: item.status_display,
+    queueCategory: item.queue_category,
+    queuePriority: item.queue_priority,
+    createdAt: item.created_at,
+  };
+}
+
+// --------------------------------------------------
 // CONTEXT TYPE
 // --------------------------------------------------
 
@@ -141,6 +191,13 @@ type LeadContextType = {
   refreshing: boolean;
   refreshError: string | null;
   leads: Lead[];
+  availableLeads: AvailableLead[];
+  loadingAvailable: boolean;
+  availableError: string | null;
+  refreshAvailableLeads: () => Promise<void>;
+  claimLead: (leadId: string) => Promise<Lead>;
+  releaseClaim: (leadId: string) => Promise<void>;
+  markCallStarted: (leadId: string) => Promise<void>;
 
   updateLead: (
     id: string,
@@ -184,6 +241,13 @@ export function LeadProvider({
   const [leads, setLeads] =
     useState<Lead[]>([]);
 
+  const [availableLeads, setAvailableLeads] =
+    useState<AvailableLead[]>([]);
+  const [loadingAvailable, setLoadingAvailable] =
+    useState(false);
+  const [availableError, setAvailableError] =
+    useState<string | null>(null);
+
   const [callHistory, setCallHistory] =
     useState<CallHistory[]>([]);
 
@@ -196,19 +260,25 @@ export function LeadProvider({
     let inFlight = false;
     setLeads([]);
     setCallHistory([]);
+    setAvailableLeads([]);
     const loadData = async () => {
       if (!sessionToken || user?.role !== 'CALLER' || inFlight) return;
       inFlight = true;
       setRefreshing(true);
       setRefreshError(null);
+      setAvailableError(null);
       try {
-        const [leadResponse, historyResponse] = await Promise.all([
+        const [leadResponse, historyResponse, availableResponse] = await Promise.all([
           apiRequest<ApiLead[]>('/mobile/leads/', { token: sessionToken }),
           apiRequest<Array<{
             id: number; lead: number | null; lead_name: string | null; lead_phone: string | null;
             phone_number: string; duration_seconds: number; followup?: { scheduled_at: string; status: string } | null;
             outcome: string; notes: string; started_at: string; ended_at: string | null;
           }>>('/calls/mine/', { token: sessionToken }),
+          apiRequest<ApiAvailableLead[]>('/mobile/leads/available/?category=WEBSITE', { token: sessionToken }).catch((err) => {
+            console.warn('Failed to load available website leads:', err);
+            return [] as ApiAvailableLead[];
+          }),
         ]);
         if (cancelled) return;
         setLeads(leadResponse.map(lead => {
@@ -221,6 +291,11 @@ export function LeadProvider({
           durationSeconds: call.duration_seconds, followUpDate: call.followup?.scheduled_at, followUpStatus: call.followup?.status, outcome: mapApiStatus(call.outcome),
           notes: call.notes, calledAt: call.ended_at || call.started_at,
         })));
+        setAvailableLeads(
+          availableResponse
+            .filter(item => (item.queue_category ? item.queue_category === 'WEBSITE' : true))
+            .map(mapApiAvailableLead)
+        );
       } catch (error) {
         if (!cancelled) setRefreshError('Could not refresh. Check your connection and try again.');
       } finally { inFlight = false; if (!cancelled) setRefreshing(false); }
@@ -467,14 +542,134 @@ export function LeadProvider({
     };
 
   // ------------------------------------------------
+  // REFRESH AVAILABLE LEADS
+  // ------------------------------------------------
+
+  const refreshAvailableLeads = async () => {
+    const token = sessionToken || (await getStoredToken());
+    if (!token || user?.role !== 'CALLER') return;
+    setLoadingAvailable(true);
+    setAvailableError(null);
+    try {
+      const response = await apiRequest<ApiAvailableLead[]>(
+        '/mobile/leads/available/?category=WEBSITE',
+        { token }
+      );
+      setAvailableLeads(
+        response
+          .filter(item => (item.queue_category ? item.queue_category === 'WEBSITE' : true))
+          .map(mapApiAvailableLead)
+      );
+    } catch (error) {
+      console.error('REFRESH AVAILABLE LEADS ERROR:', error);
+      setAvailableError('Could not load available leads. Pull to refresh.');
+    } finally {
+      setLoadingAvailable(false);
+    }
+  };
+
+  // ------------------------------------------------
+  // CLAIM AVAILABLE LEAD
+  // ------------------------------------------------
+
+  const claimLead = async (leadId: string): Promise<Lead> => {
+    const token = sessionToken || (await getStoredToken());
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    try {
+      const response = await apiRequest<{
+        claimed_by: number;
+        claimed_at: string;
+        lead: ApiLead;
+      }>(`/mobile/leads/${leadId}/claim/`, {
+        method: 'POST',
+        token,
+      });
+
+      const claimedLead: Lead = {
+        ...mapApiLead(response.lead),
+        isClaimed: true,
+      };
+      setLeads((prev) => [claimedLead, ...prev.filter((l) => l.id !== claimedLead.id)]);
+      setAvailableLeads((prev) => prev.filter((l) => l.id !== leadId));
+      return claimedLead;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setAvailableLeads((prev) => prev.filter((l) => l.id !== leadId));
+      }
+      throw error;
+    }
+  };
+
+  // ------------------------------------------------
+  // MARK CALL STARTED (OFFHOOK REACHED)
+  // ------------------------------------------------
+
+  const markCallStarted = async (leadId: string): Promise<void> => {
+    const token = sessionToken || (await getStoredToken());
+    if (!token) throw new Error('No authenticated session');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      await apiRequest<{ call_started: boolean; lead_id: number }>(
+        `/mobile/leads/${leadId}/call-started/`,
+        {
+          method: 'POST',
+          signal: controller.signal,
+          token,
+        }
+      );
+      console.log(`[LeadContext] Call started marked on backend for lead ${leadId}`);
+    } catch (error) {
+      throw error;
+    } finally { clearTimeout(timeout); }
+  };
+
+  // ------------------------------------------------
+  // RELEASE CLAIMED LEAD
+  // ------------------------------------------------
+
+  const releaseClaim = async (leadId: string): Promise<void> => {
+    const token = sessionToken || (await getStoredToken());
+    if (!token) return;
+
+    try {
+      await apiRequest<{ released?: boolean; status: string; lead_id: number; message: string }>(
+        `/mobile/leads/${leadId}/release-claim/`,
+        {
+          method: 'POST',
+          token,
+        }
+      );
+    } catch (error) {
+      console.warn('RELEASE CLAIM ERROR:', error);
+    } finally {
+      setLeads((prev) => prev.filter((l) => l.id !== leadId));
+      void refreshAvailableLeads();
+    }
+  };
+
+  // ------------------------------------------------
   // CONTEXT VALUE
   // ------------------------------------------------
 
   const value =
     useMemo(
       () => ({
-        refresh, refreshing, refreshError,
+        refresh,
+        refreshing,
+        refreshError,
         leads,
+        availableLeads,
+        loadingAvailable,
+        availableError,
+        refreshAvailableLeads,
+        claimLead,
+        releaseClaim,
+        markCallStarted,
         updateLead,
         callHistory,
         addCallHistory,
@@ -483,8 +678,17 @@ export function LeadProvider({
         getOverdueFollowUps,
       }),
       [
+        refresh,
+        refreshing,
+        refreshError,
         leads,
-        callHistory, refreshing, refreshError,
+        availableLeads,
+        loadingAvailable,
+        availableError,
+        callHistory,
+        claimLead,
+        releaseClaim,
+        markCallStarted,
       ]
     );
 

@@ -19,6 +19,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.vaani.caller",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.CALL_PHONE",
@@ -32,6 +33,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      ["expo-notifications", { "defaultChannel": "default" }],
       "expo-router",
       [
         "expo-splash-screen",

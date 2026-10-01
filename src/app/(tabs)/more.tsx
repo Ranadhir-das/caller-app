@@ -6,11 +6,15 @@ import { CallerAvatar } from '@/components/CallerAvatar';
 import { useAuth } from '@/context/AuthContext';
 import { useDialerSession } from '@/context/DialerSessionContext';
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
+import { useNotificationUnreadCount } from '@/hooks/useNotificationUnreadCount';
+import { unreadBadge } from '@/services/notificationCenter';
+import { NotificationIcon } from '@/components/NotificationIcon';
 
 export default function MoreScreen() {
   const styles = useAppStyles(createStyles);
   const { user, logout } = useAuth();
   const { stopSession } = useDialerSession();
+  const unread = useNotificationUnreadCount();
   const [busy, setBusy] = useState(false);
   const signingOut = useRef(false);
   const signOut = async () => {
@@ -39,6 +43,12 @@ export default function MoreScreen() {
           <View style={styles.chevron} />
         </Pressable>
         <Text style={styles.groupTitle}>ACCOUNT</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Notifications, ${unread} unread`} style={styles.card} onPress={() => router.push('/notifications')}>
+          <View style={styles.menuIcon}><NotificationIcon size={23} color={styles.menuLetter.color} /></View>
+          <View style={{ flex: 1 }}><Text style={styles.name}>Notifications</Text><Text style={styles.subtitle}>Your lead assignment updates</Text></View>
+          {unread > 0 && <Text style={styles.badge}>{unreadBadge(unread)}</Text>}
+          <View style={styles.chevron} />
+        </Pressable>
         {([
           ['Admissions Panel', 'Track and record student admissions', '/admissions'],
           ['Employee workspace', 'Leave, attendance and daily work', '/employee'],
@@ -76,4 +86,5 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   menuIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
   menuLetter: { color: colors.accent, fontSize: 18, fontWeight: '700' },
   pressed: { backgroundColor: colors.surfaceMuted },
+  badge: { backgroundColor: colors.accent, color: '#fff', borderRadius: 14, paddingHorizontal: 8, paddingVertical: 4, fontWeight: '700', overflow: 'hidden' },
 });

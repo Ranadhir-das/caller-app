@@ -7,9 +7,10 @@ export function LeadPieChart({ leads }: { leads: Lead[] }) {
   const { colors } = useAppTheme();
   const segments = [
     { label: 'Pending', color: colors.accent, count: leads.filter(l => l.status === 'pending').length },
+    { label: 'Admission done', color: '#a3e635', count: leads.filter(l => l.status === 'admission_done').length },
     { label: 'Interested', color: colors.success, count: leads.filter(l => l.status === 'interested').length },
     { label: 'Call back', color: colors.warning, count: leads.filter(l => l.status === 'call_back').length },
-    { label: 'Other outcomes', color: colors.danger, count: leads.filter(l => !['pending', 'interested', 'call_back'].includes(l.status)).length },
+    { label: 'Other outcomes', color: colors.danger, count: leads.filter(l => !['pending', 'admission_done', 'interested', 'call_back'].includes(l.status)).length },
   ];
   let angle = -Math.PI / 2;
   const paths = segments.filter(s => s.count).map(segment => {

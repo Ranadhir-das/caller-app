@@ -1,3 +1,4 @@
+import { acknowledgeCallStarted } from '@/services/callLifecycle';
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { useDialerSession } from '@/context/DialerSessionContext';
 import { useLeads } from '@/context/LeadContext';
@@ -20,7 +21,7 @@ import CallstateModule, {
 } from '../../modules/callstate/src/CallstateModule';
 
 export default function DialerScreen() {
-  const params = useLocalSearchParams<{ id?: string; direct?: string; phone_number?: string }>();
+  const params = useLocalSearchParams<{ id?: string; direct?: string; phone_number?: string; isClaimed?: string }>();
   const { leads } = useLeads();
   const { user } = useAuth();
   const targetId = params.id || (params.direct === '1' ? params.phone_number : leads.find(lead => lead.status === 'pending')?.id);
@@ -29,7 +30,7 @@ export default function DialerScreen() {
 
 function ActiveDialer() {
   const styles = useAppStyles(createStyles);
-  const { leads } = useLeads();
+  const { leads, releaseClaim, markCallStarted } = useLeads();
   const { user } = useAuth();
 
   const {
@@ -44,6 +45,7 @@ function ActiveDialer() {
     direct?: string;
     phone_number?: string;
     name?: string;
+    isClaimed?: string;
   }>();
 
   // --------------------------------------------------
@@ -55,6 +57,8 @@ function ActiveDialer() {
   const currentLead = direct
     ? (params.phone_number ? { id: params.id || '', name: params.name || params.phone_number, phone: params.phone_number } : undefined)
     : leads.find((lead) => lead.id === params.id) ?? leads.find((lead) => lead.status === 'pending');
+
+  const isClaimedWebsiteLead = params.isClaimed === '1' || Boolean(currentLead && 'isClaimed' in currentLead && currentLead.isClaimed);
 
   // --------------------------------------------------
   // LOCAL STATE
@@ -74,6 +78,19 @@ function ActiveDialer() {
   const countdownRef =
     useRef<ReturnType<typeof setInterval> | null>(null);
 
+  type CallAttemptState =
+    | 'IDLE'
+    | 'DIALING'
+    | 'CONNECTED'
+    | 'DISCONNECTED'
+    | 'CANCELLED';
+
+  const callAttemptIdRef = useRef(0);
+  const callAttemptStateRef = useRef<CallAttemptState>('IDLE');
+  const hasSeenOffhookRef = useRef(false);
+  const outcomeAlreadyOpenedRef = useRef(false);
+  const pendingIdleRef = useRef(false);
+
   const callWasStartedRef =
     useRef(false);
 
@@ -91,6 +108,100 @@ function ActiveDialer() {
   const requestedRef = useRef(false);
   const recordingArmedRef = useRef(false);
   const draftIdRef = useRef(newCallId());
+  const claimReleasedRef = useRef(false);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const acknowledgementStartedRef = useRef(false);
+
+  const markCallConnected = (source = 'event') => {
+    if (callEndedAtRef.current || outcomeAlreadyOpenedRef.current) return;
+    callAttemptStateRef.current = 'CONNECTED';
+    hasSeenOffhookRef.current = true;
+    if (!callWasStartedRef.current) navigatingRef.current = false;
+    callWasStartedRef.current = true;
+
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+      console.log('DIALER: Cancelling pending IDLE grace timer');
+    }
+    pendingIdleRef.current = false;
+
+    if (!callStartedAtRef.current) {
+      callStartedAtRef.current = new Date().toISOString();
+      if (user) {
+        void patchCallDraft(user.id, draftIdRef.current, { startedAt: callStartedAtRef.current })
+          .catch(error => {
+            console.error('Call draft:', error);
+            Alert.alert('Draft storage error', 'Keep this screen open until the call outcome is saved.');
+          });
+      }
+      console.log('DIALER: Call started at:', callStartedAtRef.current);
+      console.log('DIALER: Call start timestamp = ' + callStartedAtRef.current);
+    }
+
+    if (isClaimedWebsiteLead && currentLead?.id) {
+      if (!acknowledgementStartedRef.current) {
+        acknowledgementStartedRef.current = true;
+        void acknowledgeCallStarted(
+          () => markCallStarted(currentLead.id),
+          () => mountedRef.current && callWasStartedRef.current && !callEndedAtRef.current
+        );
+      }
+    }
+
+    setCallStarted(true);
+    console.log('DIALER CALL STATE: OFFHOOK');
+    console.log(`DIALER: Call connected (${source})`);
+  };
+
+  const scheduleUnstartedIdle = (source = 'event') => {
+    if (hasSeenOffhookRef.current || callWasStartedRef.current || outcomeAlreadyOpenedRef.current || navigatingRef.current) {
+      return;
+    }
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    pendingIdleRef.current = true;
+    console.log(`DIALER: IDLE received before OFFHOOK; starting grace period (source: ${source})`);
+
+    const attemptId = callAttemptIdRef.current;
+    idleTimerRef.current = setTimeout(() => {
+      idleTimerRef.current = null;
+      if (!mountedRef.current || callWasStartedRef.current || navigatingRef.current || outcomeAlreadyOpenedRef.current || attemptId !== callAttemptIdRef.current) return;
+
+      try {
+        const currentState = CallstateModule.getCurrentState();
+        if (currentState === 'OFFHOOK') {
+          console.log('DIALER: OFFHOOK detected during grace expiration');
+          markCallConnected('grace_timer');
+          return;
+        }
+      } catch (err) {
+        console.warn('DIALER: Failed to check phone state during grace expiration:', err);
+      }
+
+      console.log('DIALER CALL STATE: IDLE');
+      console.log('DIALER: No OFFHOOK during grace period');
+      console.log('DIALER: Treating call as pre-connect cancellation');
+      callAttemptStateRef.current = 'CANCELLED';
+      pendingIdleRef.current = false;
+      navigatingRef.current = true;
+      void CallstateModule.stopRecording().catch(console.warn);
+
+      if (isClaimedWebsiteLead) {
+        console.log('DIALER: Releasing temporary claim');
+        void releaseTemporaryClaim('Confirmed IDLE without OFFHOOK').then(() => {
+          if (mountedRef.current && !callWasStartedRef.current) {
+            router.replace('/');
+          }
+        });
+      } else {
+        navigatingRef.current = false;
+        setCallStarted(false);
+        setCallRequested(false);
+        requestedRef.current = false;
+        setIsPaused(true);
+      }
+    }, 2500);
+  };
 
   // Timing for the current phone call only.
   const callStartedAtRef =
@@ -105,6 +216,19 @@ function ActiveDialer() {
   const appStateRef =
     useRef(AppState.currentState);
 
+  const releaseTemporaryClaim = async (reason?: string) => {
+    if (!isClaimedWebsiteLead || !currentLead?.id || claimReleasedRef.current || callWasStartedRef.current) {
+      return;
+    }
+    claimReleasedRef.current = true;
+    console.log(`DIALER: Releasing temporary claim for lead ${currentLead.id} (reason: ${reason || 'unspecified'})`);
+    try {
+      await releaseClaim(currentLead.id);
+    } catch (err) {
+      console.warn('DIALER: Failed to release temporary claim:', err);
+    }
+  };
+
   // --------------------------------------------------
   // OPEN OUTCOME
   // --------------------------------------------------
@@ -114,16 +238,24 @@ function ActiveDialer() {
       return;
     }
 
-    if (navigatingRef.current) {
+    if (outcomeAlreadyOpenedRef.current || navigatingRef.current) {
+      console.log('DIALER: Outcome already handled; ignoring duplicate IDLE');
       return;
     }
 
+    outcomeAlreadyOpenedRef.current = true;
     navigatingRef.current = true;
+    callAttemptStateRef.current = 'DISCONNECTED';
     let recordingPath: string | undefined;
     if (recordingArmedRef.current) {
       try {
         // Use the existing idempotent stop method and wait for the file to close.
         recordingPath = (await CallstateModule.stopRecording()) || undefined;
+        const warning = CallstateModule.getRecordingWarning?.();
+        if (warning) {
+          console.warn('CALL_RECORDING:', warning);
+          if (mountedRef.current) Alert.alert('Recording audio warning', `${warning} Your call outcome can still be saved.`);
+        }
       } catch (error) { console.warn('RECORDING_UPLOAD: could not obtain recording path', error); }
     }
     try {
@@ -136,6 +268,7 @@ function ActiveDialer() {
       });
     } catch (error) {
       navigatingRef.current = false;
+      outcomeAlreadyOpenedRef.current = false;
       Alert.alert('Call draft could not be saved', String(error), [{ text: 'Retry', onPress: () => { void openCallOutcome(); } }]);
       return;
     }
@@ -183,7 +316,17 @@ function ActiveDialer() {
           // ------------------------------------------
 
           if (event.state === 'OFFHOOK' && requestedRef.current) {
+            if (callEndedAtRef.current || outcomeAlreadyOpenedRef.current) return;
+            callAttemptStateRef.current = 'CONNECTED';
+            hasSeenOffhookRef.current = true;
+            if (!callWasStartedRef.current) navigatingRef.current = false;
             callWasStartedRef.current = true;
+            if (idleTimerRef.current) {
+              clearTimeout(idleTimerRef.current);
+              idleTimerRef.current = null;
+              console.log('DIALER: Cancelling pending IDLE grace timer');
+            }
+            pendingIdleRef.current = false;
 
             if (!callStartedAtRef.current) {
               callStartedAtRef.current =
@@ -195,10 +338,24 @@ function ActiveDialer() {
                 'DIALER: Call started at:',
                 callStartedAtRef.current
               );
+              console.log(
+                'DIALER: Call start timestamp = ' + callStartedAtRef.current
+              );
+            }
+
+            if (isClaimedWebsiteLead && currentLead?.id) {
+              if (!acknowledgementStartedRef.current) {
+                acknowledgementStartedRef.current = true;
+                void acknowledgeCallStarted(() => markCallStarted(currentLead.id),
+                  () => mountedRef.current && callWasStartedRef.current && !callEndedAtRef.current);
+              }
             }
 
             setCallStarted(true);
 
+            console.log(
+              'DIALER CALL STATE: OFFHOOK'
+            );
             console.log(
               'DIALER: Call connected'
             );
@@ -207,63 +364,99 @@ function ActiveDialer() {
           }
 
           // ------------------------------------------
-          // CALL ENDED
+          // CALL ENDED / DISCONNECTED
           // ------------------------------------------
 
-          if (
-            event.state === 'IDLE' &&
-            callWasStartedRef.current &&
-            !navigatingRef.current
-          ) {
-            console.log(
-              'DIALER: Call state became IDLE'
-            );
-
-
-
-            callEndedAtRef.current =
-              new Date().toISOString();
-
-            if (callStartedAtRef.current) {
-              const startedMs =
-                new Date(
-                  callStartedAtRef.current
-                ).getTime();
-
-              const endedMs =
-                new Date(
-                  callEndedAtRef.current
-                ).getTime();
-
-              callDurationSecondsRef.current =
-                Math.max(
-                  0,
-                  Math.round(
-                    (endedMs - startedMs) / 1000
-                  )
-                );
+          if (event.state === 'IDLE') {
+            if (outcomeAlreadyOpenedRef.current) {
+              console.log('DIALER: Outcome already handled; ignoring duplicate IDLE');
+              return;
             }
 
-            console.log(
-              'DIALER: Call ended at:',
-              callEndedAtRef.current
-            );
+            if (isClaimedWebsiteLead && requestedRef.current && !callWasStartedRef.current) {
+              scheduleUnstartedIdle();
+              return;
+            }
 
-            console.log(
-              'DIALER: Call duration:',
-              callDurationSecondsRef.current,
-              'seconds'
-            );
+            if (
+              callWasStartedRef.current &&
+              !navigatingRef.current && !callEndedAtRef.current
+            ) {
+              console.log(
+                'DIALER CALL STATE: IDLE'
+              );
+              console.log(
+                'DIALER: Confirmed call disconnect after OFFHOOK'
+              );
+              console.log(
+                'DIALER: Confirmed disconnect after OFFHOOK'
+              );
 
-            openCallOutcome();
+              callEndedAtRef.current =
+                new Date().toISOString();
+              callAttemptStateRef.current = 'DISCONNECTED';
+
+              if (callStartedAtRef.current) {
+                const startedMs =
+                  new Date(
+                    callStartedAtRef.current
+                  ).getTime();
+
+                const endedMs =
+                  new Date(
+                    callEndedAtRef.current
+                  ).getTime();
+
+                callDurationSecondsRef.current =
+                  Math.max(
+                    0,
+                    Math.round(
+                      (endedMs - startedMs) / 1000
+                    )
+                  );
+              }
+
+              const durMins = Math.floor(callDurationSecondsRef.current / 60);
+              const durSecs = callDurationSecondsRef.current % 60;
+              const formattedDuration = `${String(durMins).padStart(2, '0')}:${String(durSecs).padStart(2, '0')}`;
+
+              console.log(
+                'DIALER: Call ended at:',
+                callEndedAtRef.current
+              );
+
+              console.log(
+                'DIALER: Call duration:',
+                callDurationSecondsRef.current,
+                'seconds'
+              );
+              console.log(
+                `DIALER: Call duration = ${formattedDuration}`
+              );
+
+              console.log('DIALER: Opening call outcome');
+              openCallOutcome();
+              return;
+            }
+
+            if (requestedRef.current && !callWasStartedRef.current && !navigatingRef.current) {
+              scheduleUnstartedIdle();
+              return;
+            }
           }
         }
       );
 
     return () => {
       mountedRef.current = false;
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       void CallstateModule.stopRecording().then((path) => {
         console.log('CALL_RECORDING: cleanup path:', path);
+        // Unexpected navigation must not orphan a successfully closed recording.
+        // Normal outcome navigation already persisted it before replacing this screen.
+        if (path && user && recordingArmedRef.current && !navigatingRef.current) {
+          return patchCallDraft(user.id, draftIdRef.current, { recordingPath: path });
+        }
       }).catch((error) => console.warn('CALL_RECORDING: cleanup error:', error));
       console.log(
         'DIALER: Removing call-state listener'
@@ -272,6 +465,10 @@ function ActiveDialer() {
       if (listenerRef.current) {
         listenerRef.current.remove();
         listenerRef.current = null;
+      }
+
+      if (isClaimedWebsiteLead && !callWasStartedRef.current && !claimReleasedRef.current) {
+        void releaseTemporaryClaim('Component unmounted before call connection');
       }
     };
   }, []);
@@ -335,18 +532,16 @@ function ActiveDialer() {
           appStateRef.current = nextState;
 
           // ------------------------------------------
-          // APP RETURNED AFTER PHONE CALL
+          // APP RETURNED FROM BACKGROUND
           // ------------------------------------------
 
           if (
             wasBackground &&
-            nextState === 'active' &&
-            callWasStartedRef.current &&
-            !navigatingRef.current
+            nextState === 'active'
           ) {
-            console.log(
-              'DIALER: Returned to app after call'
-            );
+            if (outcomeAlreadyOpenedRef.current) {
+              return;
+            }
 
             try {
               const currentState =
@@ -357,43 +552,81 @@ function ActiveDialer() {
                 currentState
               );
 
-              if (currentState === 'IDLE') {
-                console.log(
-                  'DIALER: Phone is idle - opening outcome'
-                );
-
-                if (!callEndedAtRef.current) {
-                  callEndedAtRef.current =
-                    new Date().toISOString();
-
-                  if (callStartedAtRef.current) {
-                    const startedMs =
-                      new Date(
-                        callStartedAtRef.current
-                      ).getTime();
-
-                    const endedMs =
-                      new Date(
-                        callEndedAtRef.current
-                      ).getTime();
-
-                    callDurationSecondsRef.current =
-                      Math.max(
-                        0,
-                        Math.round(
-                          (endedMs - startedMs) / 1000
-                        )
-                      );
-                  }
+              if (currentState === 'OFFHOOK') {
+                if (requestedRef.current && !callWasStartedRef.current) {
+                  console.log(
+                    'DIALER: Returned to app with phone state OFFHOOK; marking call connected'
+                  );
+                  markCallConnected('appstate');
+                } else {
+                  console.log(
+                    'DIALER: Returned to app while call is still OFFHOOK; continuing to wait for disconnect'
+                  );
                 }
+                return;
+              }
 
-                setTimeout(() => {
-                  openCallOutcome();
-                }, 500);
+              if (currentState === 'IDLE') {
+                if (hasSeenOffhookRef.current || callWasStartedRef.current) {
+                  console.log(
+                    'DIALER: Returned to app after call'
+                  );
+                  console.log(
+                    'DIALER: Phone is idle - opening outcome'
+                  );
+
+                  if (!callEndedAtRef.current) {
+                    callEndedAtRef.current =
+                      new Date().toISOString();
+                    callAttemptStateRef.current = 'DISCONNECTED';
+
+                    if (callStartedAtRef.current) {
+                      const startedMs =
+                        new Date(
+                          callStartedAtRef.current
+                        ).getTime();
+
+                      const endedMs =
+                        new Date(
+                          callEndedAtRef.current
+                        ).getTime();
+
+                      callDurationSecondsRef.current =
+                        Math.max(
+                          0,
+                          Math.round(
+                            (endedMs - startedMs) / 1000
+                          )
+                        );
+                    }
+                  }
+
+                  setTimeout(() => {
+                    if (!outcomeAlreadyOpenedRef.current && !navigatingRef.current) {
+                      console.log('DIALER CALL STATE: IDLE');
+                      console.log('DIALER: Confirmed call disconnect after OFFHOOK');
+                      console.log('DIALER: Confirmed disconnect after OFFHOOK');
+                      const durMins = Math.floor(callDurationSecondsRef.current / 60);
+                      const durSecs = callDurationSecondsRef.current % 60;
+                      const formattedDuration = `${String(durMins).padStart(2, '0')}:${String(durSecs).padStart(2, '0')}`;
+                      console.log(`DIALER: Call duration = ${formattedDuration}`);
+                      console.log('DIALER: Opening call outcome');
+                      openCallOutcome();
+                    }
+                  }, 300);
+                } else if (
+                  requestedRef.current &&
+                  !navigatingRef.current
+                ) {
+                  console.log(
+                    'DIALER: Returned to app without call connection, phone state: IDLE'
+                  );
+                  scheduleUnstartedIdle('appstate');
+                }
               }
             } catch (error) {
               console.error(
-                'DIALER: Failed to get call state:',
+                'DIALER: Failed to get call state in AppState listener:',
                 error
               );
             }
@@ -554,6 +787,9 @@ function ActiveDialer() {
       );
 
       setIsPaused(true);
+      if (isClaimedWebsiteLead) {
+        void releaseTemporaryClaim('Phone call permission denied');
+      }
 
       return;
     }
@@ -590,10 +826,29 @@ function ActiveDialer() {
       currentLead.phone
     );
 
+    callAttemptIdRef.current += 1;
+    const currentAttemptId = callAttemptIdRef.current;
+    callAttemptStateRef.current = 'DIALING';
+    hasSeenOffhookRef.current = false;
+    callWasStartedRef.current = false;
+    outcomeAlreadyOpenedRef.current = false;
+    pendingIdleRef.current = false;
+    claimReleasedRef.current = false;
+    acknowledgementStartedRef.current = false;
+    navigatingRef.current = false;
+
     // Clear timing from any previous call.
     callStartedAtRef.current = null;
     callEndedAtRef.current = null;
     callDurationSecondsRef.current = 0;
+
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+
+    console.log('DIALER CALL ATTEMPT: created');
+    console.log(`DIALER CALL ATTEMPT: created (${currentAttemptId})`);
 
     try {
       if (!user) throw new Error('Please sign in before calling.');
@@ -624,12 +879,21 @@ function ActiveDialer() {
         error
       );
 
-      callWasStartedRef.current = false;
+      if (callWasStartedRef.current || hasSeenOffhookRef.current) return; // OFFHOOK wins even if native launch reports an error.
       requestedRef.current = false;
+      callAttemptStateRef.current = 'CANCELLED';
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
       void CallstateModule.stopRecording().catch(console.warn);
 
       setCallStarted(false);
       setCallRequested(false);
+
+      if (isClaimedWebsiteLead) {
+        void releaseTemporaryClaim('Call launch failed');
+      }
 
       Alert.alert(
         'Call Error',
@@ -676,7 +940,7 @@ function ActiveDialer() {
   // SKIP
   // --------------------------------------------------
 
-  const skipStudent = () => {
+  const skipStudent = async () => {
     if (!currentLead) {
       return;
     }
@@ -687,6 +951,10 @@ function ActiveDialer() {
       );
 
       countdownRef.current = null;
+    }
+
+    if (isClaimedWebsiteLead) {
+      await releaseTemporaryClaim('Caller skipped lead before call');
     }
 
     recordSkip();
@@ -742,7 +1010,13 @@ function ActiveDialer() {
   // --------------------------------------------------
 
   const stopDialer = () => {
-    if (direct) { router.replace('/direct-dialer'); return; }
+    if (direct) {
+      if (isClaimedWebsiteLead) {
+        void releaseTemporaryClaim('Caller stopped direct dialer');
+      }
+      router.replace('/direct-dialer');
+      return;
+    }
     if (countdownRef.current) {
       clearInterval(
         countdownRef.current
@@ -762,7 +1036,10 @@ function ActiveDialer() {
         {
           text: 'Stop',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            if (isClaimedWebsiteLead) {
+              await releaseTemporaryClaim('Caller stopped dialer before call');
+            }
             stopSession();
 
             router.replace('/');
@@ -929,9 +1206,19 @@ function ActiveDialer() {
             End the phone call to continue.
           </Text>
           {!callStarted && <Pressable style={styles.stopButton} onPress={() => {
-            Alert.alert('Call did not start?', 'If the phone call was cancelled before Android reported OFFHOOK, return to the dialer. The incomplete draft will remain available for review.', [
+            Alert.alert('Call did not start?', 'If the phone call was cancelled before Android reported OFFHOOK, return to the dialer.', [
               { text: 'Stay', style: 'cancel' },
-              { text: 'Return to Dialer', onPress: () => router.replace('/direct-dialer') },
+              {
+                text: 'Release & Return',
+                onPress: async () => {
+                  if (isClaimedWebsiteLead) {
+                    await releaseTemporaryClaim('Caller confirmed call did not start');
+                    router.replace('/');
+                  } else {
+                    router.replace('/direct-dialer');
+                  }
+                },
+              },
             ]);
           }}><Text style={styles.stopButtonText}>Call did not start?</Text></Pressable>}
         </View>

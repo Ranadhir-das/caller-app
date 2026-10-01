@@ -1,5 +1,5 @@
 export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.58.15.156:8000/api/v1"
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.1.32:8000/api/v1"
 ).replace(/\/+$/, "");
 
 // The CRM's own app-introduction/download page, on whatever host this build
@@ -12,6 +12,8 @@ type ApiOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
   token?: string;
+  signal?: AbortSignal;
+  suppressErrorLog?: boolean;
 };
 
 export class ApiError extends Error {
@@ -40,7 +42,8 @@ export async function apiRequest<T>(
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal: options.signal,
+    body: body !== undefined ? (typeof body === "string" ? body : JSON.stringify(body)) : undefined,
   }).catch(() => {
     throw new Error(
       `Cannot reach Vaani at ${API_BASE_URL}. Check that the server is running and your device is on the same network.`
@@ -56,7 +59,7 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok) {
-    console.error(
+    if (!options.suppressErrorLog) console.error(
       "API ERROR:",
       response.status,
       data
@@ -82,9 +85,12 @@ function extractErrorMessage(data: any): string {
   if (Array.isArray(data.non_field_errors) && typeof data.non_field_errors[0] === "string") {
     return data.non_field_errors[0];
   }
+  if (typeof data.message === "string") return data.message;
+  if (typeof data.error === "string") return data.error;
+
   for (const [field, value] of Object.entries(data)) {
     if (Array.isArray(value) && typeof value[0] === "string") {
-      return field === "non_field_errors" ? value[0] : `${field}: ${value[0]}`;
+      return value[0];
     }
     if (typeof value === "string") return value;
   }

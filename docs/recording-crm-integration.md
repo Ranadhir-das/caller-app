@@ -103,6 +103,39 @@ out of scope. Do not clear app storage/uninstall while recordings are pending.
 
 ## Limits
 
+### Silent capture investigation — September 25
+
+The local CRM recording for call 38 was decoded with Chromium's audio decoder:
+42.1674 seconds, mono, peak amplitude 0, RMS 0. Every decoded sample was zero.
+This is silence in the stored file, not a CRM volume/player problem. Amplifying
+or re-uploading that file cannot recover speech. No audio was shared externally.
+
+The native recorder now samples peak microphone amplitude and, on Android 10+,
+checks `activeRecordingConfiguration.isClientSilenced`. At stop it logs the peak,
+sample count and observed silencing, and exposes `getRecordingWarning()` for the
+dialer to show a warning. These diagnostics preserve the file, existing upload,
+calling, timing and outcome behavior. Nonzero amplitude is not proof of speech
+or two-way capture; failed/short diagnostics are not classified as silence.
+
+Android prioritizes cellular calls over ordinary microphone capture. A granted
+RECORD_AUDIO permission does not grant privileged cellular uplink/downlink access:
+https://developer.android.com/media/platform/sharing-audio-input
+No privileged permissions, accessibility workaround, forced speaker routing or
+unverified audio-source change was added. The device was not connected during
+this investigation, so the exact reason for its zero signal remains unverified.
+
+**A new native Android build is required** for these diagnostics; a Metro reload
+alone does not update Kotlin code. After installation, make a short consented
+cellular test call and inspect `adb logcat -s CALL_RECORDING`, the app warning and
+CRM playback. If Android reports silencing, this ordinary-app MIC implementation
+cannot guarantee recording on that device; a supported manufacturer recording
+integration or a different calling architecture is required. Keep existing
+recordings; reinstall/update without clearing app data.
+
+Validation: `:callstate:compileDebugKotlin -PreactNativeArchitectures=arm64-v8a`
+passed, TypeScript passed, and all eight upload regression tests passed. No new
+cellular audio capture test was possible without the connected phone.
+
 - Duration metadata reuses existing observed call duration; the native recorder
   does not expose a separate final audio duration. No audio inspection is performed.
 - Uploads are foreground, bounded to a 60-second attempt, with manual retries.
@@ -115,6 +148,38 @@ out of scope. Do not clear app storage/uninstall while recordings are pending.
   and synthetic container bytes, not actual recorded conversations.
 
 ## Checks
+
+### September 24 flow audit
+
+- A pending recording on the connected Android device reported `Unsupported
+  FormDataPart implementation`. Uploads now use `expo/fetch` with the actual
+  `expo-file-system` File as the multipart part, replacing the unsupported legacy
+  `{ uri, name, type }` object. Upload regression tests exercise the installed
+  Expo multipart encoder, not just a mocked network request.
+- Non-JSON HTTP errors and recording-field validation errors now retain the
+  status/reason in the pending draft. Invalid/empty success confirmations never
+  trigger file deletion.
+- Unexpected dialer unmount now preserves the closed recording path on its
+  existing draft. It does not fabricate call-end timing; incomplete timing still
+  requires review. OS process-death recovery remains a limitation as noted above.
+- Invalid CRM recording date filters no longer raise server errors.
+- The local `.env` now allows the app's configured `10.58.15.156` host. The local
+  backend was restarted and its unauthenticated recording endpoint returns 401
+  instead of a host-validation 400. Production configuration was not changed.
+
+Reload the mobile JavaScript bundle, then use Direct Dialer → Retry recording /
+cleanup for the existing pending recording. Verify playback in CRM and that the
+pending item disappears only after confirmed upload. A real new cellular call
+is still required to verify capture and audibility of both parties.
+
+Audit validation: Django check and migration consistency passed; the full default
+Django suite passed 136 tests; eight upload tests passed; TypeScript and Android
+Hermes export passed. Device capture quality and a signed-in device retry were
+not verified (the device was at the login screen).
+Native Kotlin compilation passed. The ARM64 lint run was blocked in the existing
+`react-native-worklets:lintAnalyzeDebug` dependency by a Kotlin lint engine crash:
+`Cannot find a KaModule for the VirtualFile`. No native source or dependency
+versions were changed to suppress that failure; see `.recording-audit-android-arm64.log`.
 
 Use `manage.py test apps...` with explicit app labels; existing root-level smoke
 scripts are not isolated tests and must not be discovered against normal data.

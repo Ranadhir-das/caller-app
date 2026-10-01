@@ -33,6 +33,7 @@ class CallstateModule : Module() {
     AsyncFunction("stopRecording") { CallRecordingService.stop("JS stop/unmount") }.runOnQueue(Queues.MAIN)
     Function("isRecording") { CallRecordingService.isRecording() }
     Function("getRecordingPath") { CallRecordingService.getRecordingPath() }
+    Function("getRecordingWarning") { CallRecordingService.getRecordingWarning() }
 
     OnDestroy {
       CallRecordingService.cleanup("Native module destroyed")

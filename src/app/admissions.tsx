@@ -17,28 +17,23 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
-
 import { AnimatedBackButton } from '@/components/AnimatedBackButton';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { useAuth } from '@/context/AuthContext';
-import { useLeads } from '@/context/LeadContext';
 import {
-  createAdmission,
   getCallerAdmissions,
   type AdmissionRecord,
   type AdmissionsSummary,
+  type CandidateType,
 } from '@/services/admissions';
-import type { Lead } from '@/types';
 
 type PeriodFilter = 'all' | 'today' | 'week' | 'month';
+type CandidateFilter = 'all' | 'LEAD' | 'WALK_IN';
 
 export default function AdmissionsScreen() {
   const styles = useAppStyles(createStyles);
-  const { colors, mode } = useAppTheme();
+  const { colors } = useAppTheme();
   const { token } = useAuth();
-  const { leads, refresh: refreshLeads } = useLeads();
-  const { prefillLeadId } = useLocalSearchParams<{ prefillLeadId?: string }>();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -50,20 +45,9 @@ export default function AdmissionsScreen() {
     this_month: 0,
   });
 
+  const [selectedType, setSelectedType] = useState<CandidateFilter>('all');
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Form modal state
-  const [modalVisible, setModalVisible] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [leadSearchText, setLeadSearchText] = useState('');
-  const [collegeInput, setCollegeInput] = useState('');
-  const [courseInput, setCourseInput] = useState('');
-  const [feesInput, setFeesInput] = useState('');
-  const [notesInput, setNotesInput] = useState('');
-  const [admissionDate, setAdmissionDate] = useState<Date>(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Load admissions from server
   const loadAdmissions = useCallback(async (isRefresh = false) => {
@@ -88,58 +72,29 @@ export default function AdmissionsScreen() {
     void loadAdmissions();
   }, [loadAdmissions]);
 
-  // Handle prefill if opened from lead-details
-  useEffect(() => {
-    if (prefillLeadId && leads.length > 0) {
-      const target = leads.find((l) => l.id === prefillLeadId);
-      if (target) {
-        openRecordModal(target);
-      }
-    }
-  }, [prefillLeadId, leads]);
 
-  const openRecordModal = (preselected?: Lead) => {
-    if (preselected) {
-      setSelectedLead(preselected);
-      setLeadSearchText(`${preselected.name} (${preselected.phone})`);
-      setCollegeInput('');
-      setCourseInput('');
-      setFeesInput('');
-      setNotesInput(preselected.notes || '');
-    } else {
-      setSelectedLead(null);
-      setLeadSearchText('');
-      setCollegeInput('');
-      setCourseInput('');
-      setFeesInput('');
-      setNotesInput('');
-    }
-    setAdmissionDate(new Date());
-    setModalVisible(true);
-  };
 
-  const closeRecordModal = () => {
-    if (submitting) return;
-    setModalVisible(false);
-    setSelectedLead(null);
-    setLeadSearchText('');
-  };
+  // Counts for candidate types
+  const onlineLeadsCount = useMemo(
+    () => summary.leads_count ?? admissions.filter((a) => a.candidate_type !== 'WALK_IN').length,
+    [summary.leads_count, admissions]
+  );
 
-  // Filter leads for search in form
-  const matchedLeads = useMemo(() => {
-    const q = leadSearchText.trim().toLowerCase();
-    if (!q || (selectedLead && leadSearchText === `${selectedLead.name} (${selectedLead.phone})`)) {
-      return [];
-    }
-    return leads
-      .filter((l) => l.phone.includes(q) || l.name.toLowerCase().includes(q))
-      .slice(0, 10);
-  }, [leads, leadSearchText, selectedLead]);
+  const walkinsCount = useMemo(
+    () => summary.walkins_count ?? admissions.filter((a) => a.candidate_type === 'WALK_IN').length,
+    [summary.walkins_count, admissions]
+  );
 
   // Filtered admissions list
   const filteredAdmissions = useMemo(() => {
     let result = admissions;
 
+    // Filter by candidate type (Lead vs Walk-in)
+    if (selectedType !== 'all') {
+      result = result.filter((a) => a.candidate_type === selectedType);
+    }
+
+    // Filter by period
     if (selectedPeriod === 'today') {
       const todayStr = new Date().toISOString().split('T')[0];
       result = result.filter((a) => a.admission_date === todayStr);
@@ -156,55 +111,31 @@ export default function AdmissionsScreen() {
       result = result.filter((a) => new Date(a.admission_date) >= monthStart);
     }
 
+    // Filter by search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         (a) =>
-          a.lead_name.toLowerCase().includes(q) ||
-          a.lead_phone.includes(q) ||
-          a.college.toLowerCase().includes(q) ||
-          a.course.toLowerCase().includes(q)
+          (a.lead_name && a.lead_name.toLowerCase().includes(q)) ||
+          (a.lead_phone && a.lead_phone.includes(q)) ||
+          (a.walk_in_name && a.walk_in_name.toLowerCase().includes(q)) ||
+          (a.walk_in_phone && a.walk_in_phone.includes(q)) ||
+          (a.country && a.country.toLowerCase().includes(q)) ||
+          (a.college && a.college.toLowerCase().includes(q)) ||
+          (a.course && a.course.toLowerCase().includes(q))
       );
     }
 
     return result;
-  }, [admissions, selectedPeriod, searchQuery]);
+  }, [admissions, selectedType, selectedPeriod, searchQuery]);
 
-  const handleSaveAdmission = async () => {
-    if (!selectedLead) {
-      Alert.alert('Select Student', 'Please search and select a student lead by phone number or name.');
-      return;
-    }
-    if (!collegeInput.trim()) {
-      Alert.alert('College Required', 'Please enter the admitted college or institute name.');
-      return;
-    }
 
-    setSubmitting(true);
-    try {
-      const dateStr = admissionDate.toISOString().split('T')[0];
-      const result = await createAdmission(token!, {
-        lead_id: Number(selectedLead.id),
-        college: collegeInput.trim(),
-        course: courseInput.trim(),
-        admission_date: dateStr,
-        fees: feesInput.trim() ? Number(feesInput.trim()) : undefined,
-        notes: notesInput.trim(),
-      });
-
-      Alert.alert('Admission Saved!', `Admission for ${result.admission.lead_name} has been recorded.`);
-      closeRecordModal();
-      await loadAdmissions(true);
-      void refreshLeads();
-    } catch (error) {
-      console.error('Create admission failed:', error);
-      Alert.alert('Error', error instanceof Error ? error.message : 'Could not save admission.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleCallStudent = (phone: string) => {
+    if (!phone) {
+      Alert.alert('No Phone', 'No phone number available for this candidate.');
+      return;
+    }
     Linking.openURL(`tel:${phone}`).catch(() => {
       Alert.alert('Call Failed', `Cannot dial ${phone} on this device.`);
     });
@@ -217,38 +148,66 @@ export default function AdmissionsScreen() {
       year: 'numeric',
     });
 
+    const isWalkIn = item.candidate_type === 'WALK_IN';
+    const phoneToCall = item.lead_phone || item.walk_in_phone || '';
+    const displayName = item.lead_name || item.walk_in_name || (isWalkIn ? 'Walk-in Candidate' : 'Student');
+
     return (
       <Pressable
         style={styles.card}
         onPress={() => {
-          router.push({
-            pathname: '/lead-details',
-            params: { id: String(item.lead_id) },
-          });
+          if (item.lead_id) {
+            router.push({
+              pathname: '/lead-details',
+              params: { id: String(item.lead_id) },
+            });
+          }
         }}
       >
         <View style={styles.cardHeader}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{item.lead_name.charAt(0).toUpperCase()}</Text>
+          <View style={[styles.avatar, isWalkIn && styles.avatarWalkIn]}>
+            <Text style={[styles.avatarText, isWalkIn && styles.avatarTextWalkIn]}>
+              {isWalkIn ? '🚶' : displayName.charAt(0).toUpperCase()}
+            </Text>
           </View>
           <View style={{ flex: 1, marginRight: 8 }}>
-            <Text style={styles.studentName}>{item.lead_name}</Text>
-            <Text style={styles.studentPhone}>{item.lead_phone}</Text>
+            <View style={styles.nameRow}>
+              <Text style={styles.studentName} numberOfLines={1}>
+                {displayName}
+              </Text>
+              {isWalkIn ? (
+                <View style={styles.badgeWalkIn}>
+                  <Text style={styles.badgeWalkInText}>🚶 Walk-in</Text>
+                </View>
+              ) : (
+                <View style={styles.badgeLead}>
+                  <Text style={styles.badgeLeadText}>💻 Lead</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.studentPhone}>{phoneToCall || 'No phone'}</Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Call ${item.lead_name}`}
-            style={styles.callIconBtn}
-            onPress={(e) => {
-              e.stopPropagation();
-              handleCallStudent(item.lead_phone);
-            }}
-          >
-            <Text style={styles.callIconText}>📞</Text>
-          </Pressable>
+          {phoneToCall ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Call ${displayName}`}
+              style={styles.callIconBtn}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleCallStudent(phoneToCall);
+              }}
+            >
+              <Text style={styles.callIconText}>📞</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.detailsRow}>
+          {item.country ? (
+            <View style={[styles.detailBadge, styles.countryBadge]}>
+              <Text style={styles.countryBadgeText}>🌍 {item.country}</Text>
+            </View>
+          ) : null}
           <View style={styles.detailBadge}>
             <Text style={styles.badgeText}>🏫 {item.college || 'College specified'}</Text>
           </View>
@@ -274,10 +233,14 @@ export default function AdmissionsScreen() {
 
         <View style={styles.sourceFooter}>
           <Text style={styles.sourceTag}>
-            {item.created_from === 'CRM' ? '💻 Recorded in CRM' : '📱 Recorded in App'}
+            {isWalkIn
+              ? '🚶 Direct Walk-in Candidate'
+              : item.created_from === 'CRM'
+              ? '💻 Recorded in CRM'
+              : '📱 Recorded in App'}
             {item.created_by_name ? ` • by ${item.created_by_name}` : ''}
           </Text>
-          <Text style={styles.viewProfileText}>View Profile →</Text>
+          {item.lead_id ? <Text style={styles.viewProfileText}>View Profile →</Text> : null}
         </View>
       </Pressable>
     );
@@ -290,16 +253,9 @@ export default function AdmissionsScreen() {
         <AnimatedBackButton style={styles.backButton} />
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Admissions Panel</Text>
-          <Text style={styles.headerSubtitle}>Track your successful enrolments</Text>
+          <Text style={styles.headerSubtitle}>Verified admissions confirmed by admin</Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Record new admission"
-          style={styles.addButton}
-          onPress={() => openRecordModal()}
-        >
-          <Text style={styles.addButtonText}>+ Record</Text>
-        </Pressable>
+        <View style={{ width: 36 }} />
       </View>
 
       <FlatList
@@ -339,13 +295,37 @@ export default function AdmissionsScreen() {
               </View>
             </View>
 
-            {/* Filter Pills */}
+            {/* Candidate Type Segment Tabs (Separates Online Leads & Walk-in Candidates) */}
+            <View style={styles.typeFilterContainer}>
+              {(
+                [
+                  { id: 'all', label: `All (${summary.total})` },
+                  { id: 'LEAD', label: `💻 Online Leads (${onlineLeadsCount})` },
+                  { id: 'WALK_IN', label: `🚶 Walk-ins (${walkinsCount})` },
+                ] as const
+              ).map((tab) => {
+                const isSelected = selectedType === tab.id;
+                return (
+                  <Pressable
+                    key={tab.id}
+                    style={[styles.typeFilterPill, isSelected && styles.typeFilterPillSelected]}
+                    onPress={() => setSelectedType(tab.id)}
+                  >
+                    <Text style={[styles.typeFilterText, isSelected && styles.typeFilterTextSelected]}>
+                      {tab.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Period Filter Pills */}
             <View style={styles.periodRow}>
               {(['all', 'today', 'week', 'month'] as const).map((period) => {
                 const isSelected = selectedPeriod === period;
                 const label =
                   period === 'all'
-                    ? 'All'
+                    ? 'All Time'
                     : period === 'today'
                     ? 'Today'
                     : period === 'week'
@@ -368,7 +348,7 @@ export default function AdmissionsScreen() {
               <Text style={styles.searchIcon}>⌕</Text>
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search student, phone, college, course..."
+                placeholder="Search student, phone, country, college, course..."
                 placeholderTextColor={colors.placeholder}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -389,175 +369,17 @@ export default function AdmissionsScreen() {
               <Text style={styles.emptyIcon}>🎓</Text>
               <Text style={styles.emptyTitle}>No Admissions Found</Text>
               <Text style={styles.emptySubtitle}>
-                {searchQuery || selectedPeriod !== 'all'
-                  ? 'No admissions matched your filter or search query.'
-                  : 'You have not recorded any admissions yet. Tap "+ Record" above to add your first admission.'}
+                {searchQuery || selectedPeriod !== 'all' || selectedType !== 'all'
+                  ? 'No admissions matched your selected filters or search query.'
+                  : 'No confirmed admissions recorded yet. Admissions are verified and recorded by administrators.'}
               </Text>
-              <Pressable style={styles.recordEmptyBtn} onPress={() => openRecordModal()}>
-                <Text style={styles.recordEmptyBtnText}>+ Record New Admission</Text>
-              </Pressable>
             </View>
           ) : null
         }
       />
-
-      {/* Record Admission Modal Form */}
-      <Modal visible={modalVisible} animationType="slide" transparent={false} onRequestClose={closeRecordModal}>
-        <SafeAreaView style={styles.modalSafeArea}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1 }}
-          >
-            <View style={styles.modalHeader}>
-              <Pressable onPress={closeRecordModal} style={styles.modalCloseBtn}>
-                <Text style={styles.modalCloseText}>✕</Text>
-              </Pressable>
-              <Text style={styles.modalTitle}>Record Student Admission</Text>
-              <View style={{ width: 36 }} />
-            </View>
-
-            <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
-              {/* Step 1: Search and Select Lead */}
-              <Text style={styles.inputLabel}>1. Search Student by Phone or Name *</Text>
-              {selectedLead ? (
-                <View style={styles.selectedLeadCard}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.selectedLeadName}>✓ {selectedLead.name}</Text>
-                    <Text style={styles.selectedLeadPhone}>📞 {selectedLead.phone}</Text>
-                    {selectedLead.batchName ? (
-                      <Text style={styles.selectedLeadBatch}>Batch: {selectedLead.batchName}</Text>
-                    ) : null}
-                  </View>
-                  <Pressable
-                    style={styles.changeLeadBtn}
-                    onPress={() => {
-                      setSelectedLead(null);
-                      setLeadSearchText('');
-                    }}
-                  >
-                    <Text style={styles.changeLeadText}>Change</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Type student phone number or name..."
-                    placeholderTextColor={colors.placeholder}
-                    value={leadSearchText}
-                    onChangeText={setLeadSearchText}
-                    autoCapitalize="none"
-                  />
-                  {matchedLeads.length > 0 ? (
-                    <View style={styles.suggestionsBox}>
-                      {matchedLeads.map((item) => (
-                        <Pressable
-                          key={item.id}
-                          style={styles.suggestionItem}
-                          onPress={() => {
-                            setSelectedLead(item);
-                            setLeadSearchText(`${item.name} (${item.phone})`);
-                          }}
-                        >
-                          <Text style={styles.suggestionName}>{item.name}</Text>
-                          <Text style={styles.suggestionPhone}>{item.phone}</Text>
-                          <Text style={styles.suggestionStatus}>• {item.status}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : leadSearchText.trim().length > 1 ? (
-                    <Text style={styles.noMatchText}>No matching assigned lead found.</Text>
-                  ) : null}
-                </View>
-              )}
-
-              {/* Step 2: College / University */}
-              <Text style={styles.inputLabel}>2. Admitted College / University *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. AIIMS Delhi, KIMS Bangalore..."
-                placeholderTextColor={colors.placeholder}
-                value={collegeInput}
-                onChangeText={setCollegeInput}
-              />
-
-              {/* Step 3: Course / Degree */}
-              <Text style={styles.inputLabel}>3. Course / Degree</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. MBBS, BDS, Nursing, B.Tech..."
-                placeholderTextColor={colors.placeholder}
-                value={courseInput}
-                onChangeText={setCourseInput}
-              />
-
-              {/* Step 4: Admission Date */}
-              <Text style={styles.inputLabel}>4. Admission Date</Text>
-              <Pressable style={styles.dateSelector} onPress={() => setShowDatePicker(true)}>
-                <Text style={styles.dateSelectorText}>
-                  📅{' '}
-                  {admissionDate.toLocaleDateString('en-IN', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </Text>
-              </Pressable>
-              {showDatePicker ? (
-                <DateTimePicker
-                  value={admissionDate}
-                  mode="date"
-                  display={Platform.OS === 'android' ? 'default' : 'spinner'}
-                  onChange={(_, d) => {
-                    setShowDatePicker(false);
-                    if (d) setAdmissionDate(d);
-                  }}
-                />
-              ) : null}
-
-              {/* Step 5: Fees / Package */}
-              <Text style={styles.inputLabel}>5. Fees / Amount Paid (Optional)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. 50000"
-                placeholderTextColor={colors.placeholder}
-                keyboardType="numeric"
-                value={feesInput}
-                onChangeText={setFeesInput}
-              />
-
-              {/* Step 6: Notes */}
-              <Text style={styles.inputLabel}>6. Notes & Remarks</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Add details, counseling notes, payment reference..."
-                placeholderTextColor={colors.placeholder}
-                multiline
-                numberOfLines={3}
-                value={notesInput}
-                onChangeText={setNotesInput}
-              />
-
-              {/* Submit Button */}
-              <Pressable
-                style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-                onPress={handleSaveAdmission}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.submitButtonText}>Save Admission ↗</Text>
-                )}
-              </Pressable>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }
-
 const createStyles = (colors: AppColors) =>
   StyleSheet.create({
     container: {
@@ -609,7 +431,7 @@ const createStyles = (colors: AppColors) =>
       flexWrap: 'wrap',
       justifyContent: 'space-between',
       gap: 10,
-      marginBottom: 16,
+      marginBottom: 14,
     },
     metricCard: {
       width: '48%',
@@ -638,17 +460,50 @@ const createStyles = (colors: AppColors) =>
       fontWeight: '600',
       marginTop: 2,
     },
+    typeFilterContainer: {
+      flexDirection: 'row',
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 12,
+      padding: 4,
+      marginBottom: 10,
+      gap: 4,
+    },
+    typeFilterPill: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 9,
+    },
+    typeFilterPillSelected: {
+      backgroundColor: colors.surface,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    typeFilterText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.muted,
+      textAlign: 'center',
+    },
+    typeFilterTextSelected: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
     periodRow: {
       flexDirection: 'row',
       backgroundColor: colors.surfaceMuted,
       borderRadius: 10,
-      padding: 4,
+      padding: 3,
       marginBottom: 12,
-      gap: 4,
+      gap: 3,
     },
     periodPill: {
       flex: 1,
-      paddingVertical: 7,
+      paddingVertical: 6,
       alignItems: 'center',
       borderRadius: 8,
     },
@@ -661,7 +516,7 @@ const createStyles = (colors: AppColors) =>
       elevation: 2,
     },
     periodText: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '600',
       color: colors.muted,
     },
@@ -705,7 +560,7 @@ const createStyles = (colors: AppColors) =>
     cardHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 12,
+      marginBottom: 10,
     },
     avatar: {
       width: 44,
@@ -716,16 +571,52 @@ const createStyles = (colors: AppColors) =>
       justifyContent: 'center',
       marginRight: 12,
     },
+    avatarWalkIn: {
+      backgroundColor: colors.warningSoft,
+    },
     avatarText: {
       fontSize: 20,
       fontWeight: '700',
       color: colors.accent,
     },
+    avatarTextWalkIn: {
+      fontSize: 22,
+    },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginBottom: 2,
+    },
     studentName: {
       fontSize: 16,
       fontWeight: '700',
       color: colors.text,
-      marginBottom: 2,
+      flexShrink: 1,
+    },
+    badgeLead: {
+      backgroundColor: colors.accentSoft,
+      paddingVertical: 2,
+      paddingHorizontal: 6,
+      borderRadius: 6,
+      alignSelf: 'center',
+    },
+    badgeLeadText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.primary,
+    },
+    badgeWalkIn: {
+      backgroundColor: colors.warningSoft,
+      paddingVertical: 2,
+      paddingHorizontal: 6,
+      borderRadius: 6,
+      alignSelf: 'center',
+    },
+    badgeWalkInText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.warning,
     },
     studentPhone: {
       fontSize: 13,
@@ -758,6 +649,14 @@ const createStyles = (colors: AppColors) =>
       fontSize: 13,
       fontWeight: '600',
       color: colors.text,
+    },
+    countryBadge: {
+      backgroundColor: colors.successSoft,
+    },
+    countryBadgeText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.success,
     },
     courseBadge: {
       backgroundColor: colors.accentSoft,
@@ -882,6 +781,71 @@ const createStyles = (colors: AppColors) =>
       padding: 20,
       paddingBottom: 40,
     },
+    sectionHeader: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 8,
+    },
+    formTypeSegment: {
+      flexDirection: 'row',
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 12,
+      padding: 4,
+      gap: 6,
+      marginBottom: 14,
+    },
+    formTypeBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    formTypeBtnActive: {
+      backgroundColor: colors.primary,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.12,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    formTypeBtnWalkInActive: {
+      backgroundColor: colors.warning,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.12,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    formTypeBtnText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.muted,
+    },
+    formTypeBtnTextActive: {
+      color: '#FFFFFF',
+      fontWeight: '700',
+    },
+    walkInNotice: {
+      flexDirection: 'row',
+      backgroundColor: colors.warningSoft,
+      borderRadius: 10,
+      padding: 12,
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 12,
+    },
+    walkInNoticeIcon: {
+      fontSize: 20,
+    },
+    walkInNoticeText: {
+      flex: 1,
+      fontSize: 12,
+      color: colors.warning,
+      fontWeight: '600',
+      lineHeight: 16,
+    },
     inputLabel: {
       fontSize: 13,
       fontWeight: '700',
@@ -1005,4 +969,3 @@ const createStyles = (colors: AppColors) =>
       fontWeight: '700',
     },
   });
-

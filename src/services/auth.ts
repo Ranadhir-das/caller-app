@@ -48,7 +48,8 @@ export async function verifyLogin(
   challenge: string,
   photo?: string,
   consent?: boolean,
-  location?: { latitude: number; longitude: number } | null
+  location?: { latitude: number; longitude: number } | null,
+  login_remark?: string
 ): Promise<VerifyLoginResult> {
   const response = await apiRequest<VerifyLoginResult>("/mobile/login/verify/", {
     method: "POST",
@@ -58,6 +59,7 @@ export async function verifyLogin(
       consent,
       latitude: location?.latitude,
       longitude: location?.longitude,
+      login_remark: login_remark?.trim() || undefined,
     },
   });
 

@@ -1,7 +1,11 @@
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { apiRequest, ApiError } from '@/services/api';
 import {
   Pressable,
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,16 +14,46 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedBackButton } from '@/components/AnimatedBackButton';
+import { WhatsAppModal } from '@/components/WhatsAppModal';
 
-import { useLeads } from '@/context/LeadContext';
+import { useLeads, mapApiLead, type ApiLead } from '@/context/LeadContext';
 import { Lead } from '@/types';
 
 export default function LeadDetailsScreen() {
   const styles = useAppStyles(createStyles);
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const { leads } = useLeads();
+  const { id, fromNotification } = useLocalSearchParams<{ id: string; fromNotification?: string }>();
+  const { leads, refresh } = useLeads();
+  const { token } = useAuth();
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const [notificationLead, setNotificationLead] = useState<Lead | null>(null);
+  const [checking, setChecking] = useState(fromNotification === '1');
+  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [showWhatsApp, setShowWhatsApp] = useState(false);
 
-  const lead = leads.find((item) => item.id === id);
+  useEffect(() => {
+    if (fromNotification !== '1' || !token) return;
+    const controller = new AbortController();
+    setChecking(true); setNotificationLead(null); setNotificationError(null);
+    // A persisted event is not proof of current ownership. Recheck the existing API.
+    void apiRequest<ApiLead>(`/mobile/leads/${encodeURIComponent(id)}/`, { token, signal: controller.signal })
+      .then(result => {
+        if (!controller.signal.aborted) {
+          setNotificationLead(mapApiLead(result));
+          void refreshRef.current();
+        }
+      }).catch(error => {
+        if (!controller.signal.aborted) setNotificationError(error instanceof ApiError && [403, 404].includes(error.status)
+          ? 'This lead is no longer assigned to you.' : 'Could not load this lead. Check your connection and try again.');
+      }).finally(() => { if (!controller.signal.aborted) setChecking(false); });
+    return () => controller.abort();
+  }, [id, fromNotification, token, attempt]);
+
+  const cachedLead = leads.find((item) => item.id === id);
+  const lead = fromNotification === '1'
+    ? (notificationLead?.id === id ? { ...notificationLead, followUpDate: cachedLead?.followUpDate } : null)
+    : cachedLead;
 
   const getStatusLabel = (status: Lead['status']) => {
     switch (status) {
@@ -115,6 +149,8 @@ export default function LeadDetailsScreen() {
     }
   };
 
+  if (checking) return <SafeAreaView style={styles.container}><ActivityIndicator size="large" /></SafeAreaView>;
+
   if (!lead) {
     return (
       <SafeAreaView style={styles.container}>
@@ -126,8 +162,10 @@ export default function LeadDetailsScreen() {
           </Text>
 
           <Text style={styles.errorText}>
-            This student may no longer be available.
+            {notificationError || 'This student may no longer be available.'}
           </Text>
+
+          {notificationError && <Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)}><Text style={styles.errorText}>Try again</Text></Pressable>}
 
           <AnimatedBackButton
             style={styles.backButton}
@@ -253,7 +291,14 @@ export default function LeadDetailsScreen() {
 
         {/* Call Student */}
 
+        {fromNotification === '1' && !cachedLead && (
+          <Pressable accessibilityRole="button" onPress={() => void refreshRef.current()}>
+            <Text style={styles.errorText}>Updating your lead list before calling. Tap to retry if needed.</Text>
+          </Pressable>
+        )}
+
         <Pressable
+          disabled={fromNotification === '1' && !cachedLead}
           style={styles.callButton}
           onPress={() => {
             router.push({
@@ -277,6 +322,7 @@ export default function LeadDetailsScreen() {
 
         <Pressable
           style={styles.outcomeButton}
+          disabled={fromNotification === '1' && !cachedLead}
           onPress={() => {
             router.push({
               pathname: '/call-outcome',
@@ -295,23 +341,44 @@ export default function LeadDetailsScreen() {
           </Text>
         </Pressable>
 
-        {/* Record Admission */}
+        {/* Walk-in Counselling */}
         <Pressable
-          style={styles.admissionButton}
+          style={styles.counsellingButton}
           onPress={() => {
             router.push({
-              pathname: '/admissions',
+              pathname: '/counselling' as any,
               params: {
-                prefillLeadId: lead.id,
+                leadId: lead.id,
+                leadName: lead.name,
+                leadPhone: lead.phone,
+                college: lead.college || '',
               },
             });
           }}
         >
-          <Text style={styles.admissionButtonIcon}>🎓</Text>
-          <Text style={styles.admissionButtonText}>Record Admission</Text>
-          <Text style={styles.admissionChevron}>›</Text>
+          <Text style={styles.counsellingButtonIcon}>📋</Text>
+          <Text style={styles.counsellingButtonText}>Walk-in Counselling</Text>
+          <Text style={styles.counsellingChevron}>›</Text>
+        </Pressable>
+
+        {/* WhatsApp Student */}
+        <Pressable
+          style={styles.whatsAppButton}
+          onPress={() => setShowWhatsApp(true)}
+        >
+          <Text style={styles.whatsAppIcon}>💬</Text>
+          <Text style={styles.whatsAppButtonText}>WhatsApp Student</Text>
+          <Text style={styles.whatsAppChevron}>›</Text>
         </Pressable>
       </ScrollView>
+
+      <WhatsAppModal
+        visible={showWhatsApp}
+        onClose={() => setShowWhatsApp(false)}
+        leadId={lead.id}
+        leadName={lead.name}
+        leadPhone={lead.phone}
+      />
     </SafeAreaView>
   );
 }
@@ -587,7 +654,7 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     color: colors.accent,
   },
 
-  admissionButton: {
+  counsellingButton: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.accent,
@@ -600,18 +667,41 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     marginTop: 10,
     gap: 8,
   },
-  admissionButtonIcon: {
+  counsellingButtonIcon: {
     fontSize: 18,
   },
-  admissionButtonText: {
+  counsellingButtonText: {
     color: colors.accent,
     fontSize: 15,
     fontWeight: '700',
     flex: 1,
   },
-  admissionChevron: {
+  counsellingChevron: {
     fontSize: 20,
     color: colors.accent,
+  },
+  whatsAppButton: {
+    backgroundColor: '#25D366',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    marginTop: 12,
+  },
+  whatsAppIcon: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+  whatsAppButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+    flex: 1,
+  },
+  whatsAppChevron: {
+    fontSize: 20,
+    color: '#ffffff',
   },
 
   errorContainer: {

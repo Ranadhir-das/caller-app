@@ -36,7 +36,6 @@ const outcomes = [
   { id: 'forwarded_calls', label: 'Forwarded Calls', icon: '\u2197' },
   { id: 'no_candidate', label: 'No Candidate', icon: '\uD83D\uDC64' },
   { id: 'disconnected', label: 'Disconnected', icon: '\uD83D\uDCF4' },
-  { id: 'admission_done', label: 'Admission Done', icon: '\uD83C\uDF93' },
   { id: 'all_waiting', label: 'Call Waiting', icon: '\u23F3' },
   { id: 'not_reachable', label: 'Not Reachable', icon: '\uD83D\uDCF5' },
   { id: 'ringing', label: 'Ringing', icon: '\uD83D\uDD14' },
@@ -52,7 +51,6 @@ type BackendOutcome =
   | 'FORWARDED_CALLS'
   | 'NO_CANDIDATE'
   | 'DISCONNECTED'
-  | 'ADMISSION_DONE'
   | 'ALL_WAITING'
   | 'NOT_REACHABLE'
   | 'RINGING';
@@ -67,7 +65,6 @@ const outcomeToBackend: Record<string, BackendOutcome> = {
   forwarded_calls: 'FORWARDED_CALLS',
   no_candidate: 'NO_CANDIDATE',
   disconnected: 'DISCONNECTED',
-  admission_done: 'ADMISSION_DONE',
   all_waiting: 'ALL_WAITING',
   not_reachable: 'NOT_REACHABLE',
   ringing: 'RINGING',

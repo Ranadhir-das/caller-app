@@ -1,4 +1,6 @@
 import React from 'react';
+import { PushNotificationRegistration } from '@/components/PushNotificationRegistration';
+import { PeerAppreciationModal } from '@/components/PeerAppreciationModal';
 import {
   DarkTheme,
   DefaultTheme,
@@ -91,12 +93,14 @@ function AppNavigator() {
           <Stack.Screen name="direct-dialer" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="lead-details" />
+          <Stack.Screen name="notifications" />
           <Stack.Screen name="call-history-details" />
           <Stack.Screen name="follow-up-details" />
           <Stack.Screen name="call-outcome" />
           <Stack.Screen name="dialer" />
           <Stack.Screen name="dialer-backup" />
           <Stack.Screen name="admissions" />
+          <Stack.Screen name="counselling" />
         </Stack.Protected>
       </Stack>
     </>
@@ -121,6 +125,7 @@ function ThemedRoot() {
     >
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <AuthProvider>
+        <PushNotificationRegistration />
         <AnimatedSplashOverlay />
         <AccountData />
       </AuthProvider>
@@ -131,13 +136,12 @@ function ThemedRoot() {
 function AccountData() {
   const { user } = useAuth();
   return (
-        <LeadProvider key={user?.id ?? "signed-out"}>
-          <DialerSessionProvider>
-
-            <AppNavigator />
-
-          </DialerSessionProvider>
-        </LeadProvider>
+    <LeadProvider key={user?.id ?? "signed-out"}>
+      <DialerSessionProvider>
+        <AppNavigator />
+        {user ? <PeerAppreciationModal /> : null}
+      </DialerSessionProvider>
+    </LeadProvider>
   );
 }
 

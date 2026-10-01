@@ -33,8 +33,16 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [challenge, setChallenge] = useState<PendingChallenge | null>(null);
   const [consent, setConsent] = useState(false);
+  const [loginRemark, setLoginRemark] = useState("");
 
   const { beginLogin, completeLogin } = useAuth();
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning!";
+    if (hour < 17) return "Good afternoon!";
+    return "Good evening!";
+  };
 
   const handleLogin = async () => {
     if (!username.trim() || !password) {
@@ -62,7 +70,7 @@ export default function LoginScreen() {
       if (!result.photo_required) {
         // No camera step needed (e.g. admin sign-in) — finish immediately.
         const location = await getCurrentCoords();
-        const verified = await completeLogin(result.challenge, undefined, undefined, location);
+        const verified = await completeLogin(result.challenge, undefined, undefined, location, loginRemark.trim() || undefined);
         if ("token" in verified) {
           router.replace("/employee" as never);
         } else {
@@ -120,13 +128,20 @@ export default function LoginScreen() {
       if (!image) throw new Error("Photo could not be read. Please try again.");
 
       const location = await getCurrentCoords();
-      const verified = await completeLogin(challenge.id, image, challenge.action === "ENROLL", location);
+      const verified = await completeLogin(
+        challenge.id,
+        image,
+        challenge.action === "ENROLL",
+        location,
+        loginRemark.trim() || undefined
+      );
 
       if ("token" in verified) {
         router.replace("/employee" as never);
       } else {
         Alert.alert("Submitted", verified.detail);
         setChallenge(null);
+        setLoginRemark("");
       }
     } catch (error) {
       console.error("Login verification error:", error);
@@ -164,19 +179,49 @@ export default function LoginScreen() {
             <Text style={styles.label}>
               {challenge.action === "ENROLL"
                 ? "Enrollment photo required"
-                : "Verify it's you"}
+                : "Attendance Login"}
             </Text>
 
             <Text style={styles.helperText}>
               {challenge.action === "ENROLL"
                 ? "Capture a clear photo of your face with the front camera. An administrator reviews it before check-in becomes available."
-                : "Take a fresh photo with the front camera to confirm it's you before signing in."}
+                : "Take a fresh photo with the front camera to confirm your attendance."}
             </Text>
 
             {!!challenge.reviewNote && (
               <Text style={[styles.helperText, { color: colors.danger }]}>
                 Previous attempt: {challenge.reviewNote}
               </Text>
+            )}
+
+            {challenge.action === "IN" && (
+              <View style={styles.remarkContainer}>
+                <View style={styles.greetingHeader}>
+                  <Text style={styles.greetingText}>{getGreeting()}</Text>
+                  <Text style={styles.loginTimeText}>
+                    Login time: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+
+                <View style={styles.remarkHeaderRow}>
+                  <Text style={styles.remarkLabel}>Attendance Remark (Optional)</Text>
+                  <Text style={styles.charCounter}>{loginRemark.length}/500</Text>
+                </View>
+
+                <TextInput
+                  placeholderTextColor={colors.placeholder}
+                  keyboardAppearance={mode}
+                  style={styles.remarkInput}
+                  placeholder="Optional: explain if you are logging in late"
+                  value={loginRemark}
+                  onChangeText={(text) => setLoginRemark(text.slice(0, 500))}
+                  multiline
+                  numberOfLines={3}
+                  maxLength={500}
+                  editable={!loading}
+                  textAlignVertical="top"
+                />
+              </View>
             )}
 
             {challenge.action === "ENROLL" && (
@@ -196,13 +241,18 @@ export default function LoginScreen() {
               {loading ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.buttonText}>Take photo</Text>
+                <Text style={styles.buttonText}>
+                  {challenge.action === "IN" ? "Take photo & Check in" : "Take photo"}
+                </Text>
               )}
             </Pressable>
 
             <Pressable
               style={styles.linkButton}
-              onPress={() => setChallenge(null)}
+              onPress={() => {
+                setChallenge(null);
+                setLoginRemark("");
+              }}
               disabled={loading}
             >
               <Text style={styles.linkButtonText}>Back to login</Text>
@@ -363,5 +413,62 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     color: colors.onPrimary,
     fontSize: 16,
     fontWeight: "600",
+  },
+
+  remarkContainer: {
+    marginVertical: 14,
+    padding: 14,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
+  greetingHeader: {
+    marginBottom: 12,
+  },
+
+  greetingText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+
+  loginTimeText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "500",
+    opacity: 0.85,
+  },
+
+  remarkHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+
+  remarkLabel: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  charCounter: {
+    color: colors.muted,
+    fontSize: 11,
+  },
+
+  remarkInput: {
+    color: colors.text,
+    minHeight: 76,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    backgroundColor: colors.surface,
   },
 });

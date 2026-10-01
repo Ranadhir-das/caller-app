@@ -22,8 +22,11 @@ export type Lead = {
   name: string;
   phone: string;
   status: LeadStatus;
+  college?: string;
+  location?: string;
   notes?: string;
   followUpDate?: string;
+  isClaimed?: boolean;
   createdAt: string;
 };
 
@@ -39,4 +42,26 @@ export type CallHistory = {
   notes?: string;
   calledAt: string;
   followUpDate?: string;
+};
+
+export type AvailableLeadService = {
+  id: number;
+  name: string;
+  code: string;
+  description?: string;
+};
+
+export type AvailableLead = {
+  id: string;
+  name: string;
+  phone?: string;
+  phoneMasked?: string;
+  service?: AvailableLeadService | null;
+  source?: string;
+  campaign?: string;
+  status?: string;
+  statusDisplay?: string;
+  queueCategory?: string;
+  queuePriority?: number;
+  createdAt: string;
 };

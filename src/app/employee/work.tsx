@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import { Alert, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { useAppTheme, useAppStyles } from '@/context/AppThemeContext';
@@ -31,7 +31,7 @@ export default function MyWorkScreen() {
   const styles = useAppStyles(makeStyles);
   const { data, refreshing, busy, load, run, request } = useEmployeeWorkspace();
   const [notes, setNotes] = useState('');
-  const [link, setLink] = useState('');
+  const [links, setLinks] = useState<string[]>(['']);
   const [photo, setPhoto] = useState<string | null>(null);
   const [pickingPhoto, setPickingPhoto] = useState(false);
 
@@ -71,7 +71,11 @@ export default function MyWorkScreen() {
         <View style={styles.card}>
           <Text style={styles.heading}>Daily work report - {data?.date}</Text>
           <FormInput label="Work completed" value={notes} onChangeText={setNotes} multiline />
-          <FormInput label="Work link (optional)" value={link} onChangeText={setLink} />
+          {links.map((link, index) => <View key={index} style={{ gap: 6 }}>
+            <FormInput label={`Work Link ${index + 1} (optional)`} value={link} onChangeText={value => setLinks(current => current.map((item, i) => i === index ? value : item))} />
+            {links.length > 1 && <ActionButton title={`Remove Link ${index + 1}`} busy={busy} onPress={() => setLinks(current => current.filter((_, i) => i !== index))} />}
+          </View>)}
+          {links.length < 30 && <ActionButton title="+ Add Another Link" busy={busy} onPress={() => setLinks(current => [...current, ''])} />}
           <View style={{ gap: 6 }}>
             <Text style={styles.label}>Work photo (optional)</Text>
             {photo ? (
@@ -84,7 +88,9 @@ export default function MyWorkScreen() {
             )}
           </View>
           <ActionButton title="Save today's report" busy={busy} onPress={() => run(async () => {
-            await request('reports/', { date: data?.date, notes, work_link: link, ...(photo ? { photo: photo.split(',')[1] } : {}) });
+            await request('reports/', { date: data?.date, notes, work_links: links.map(link => link.trim()).filter(Boolean), ...(photo ? { photo: photo.split(',')[1] } : {}) });
+            setNotes('');
+            setLinks(['']);
             setPhoto(null);
             Alert.alert('Saved', 'Your daily report has been saved.');
           })} />
@@ -95,7 +101,7 @@ export default function MyWorkScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.label}>{r.date}</Text>
                 <Text style={styles.subtitle}>{r.notes}</Text>
-                <Text selectable style={styles.subtitle}>{r.work_link}</Text>
+                {(r.work_links?.length ? r.work_links : r.work_link ? [r.work_link] : []).map((link, index) => <Pressable key={`${index}-${link}`} accessibilityRole="link" onPress={() => { if (/^https?:\/\//i.test(link)) void Linking.openURL(link).catch(() => Alert.alert('Could not open link', link)); }}><Text selectable style={[styles.subtitle, { color: colors.primary }]}>{`Work Link ${index + 1}: ${link}`}</Text></Pressable>)}
               </View>
               {r.has_photo && <ReportPhoto id={r.id} size={56} />}
             </View>
