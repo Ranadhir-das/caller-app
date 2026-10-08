@@ -98,6 +98,10 @@ export async function getStoredToken() {
   return token;
 }
 
+export async function getStoredSessionId() {
+  return SecureStore.getItemAsync(SESSION_KEY);
+}
+
 export async function getCurrentUser(
   token: string
 ): Promise<LoggedInUser> {
@@ -106,12 +110,22 @@ export async function getCurrentUser(
   });
 }
 
-export async function logout(): Promise<void> {
+export async function logout(options: {preserveLocationQueue?:boolean} = {}): Promise<void> {
+  // Stop and make a bounded flush before invalidating the existing credential.
+  const { stopEmployeeLocation } = await import('./employeeLocation');
+  await stopEmployeeLocation(!options.preserveLocationQueue, !options.preserveLocationQueue);
   const token = await getStoredToken();
   const session_id = await SecureStore.getItemAsync(SESSION_KEY);
-  if (token && session_id) await apiRequest('/mobile/session/', { token, method: 'POST', body: { session_id, action: 'logout', active: false } });
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
-  await SecureStore.deleteItemAsync(SESSION_KEY);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    if (token && session_id) await apiRequest('/mobile/session/', { token, method: 'POST', signal:controller.signal, suppressErrorLog:true, body: { session_id, action: 'logout', active: false } });
+  } catch { /* Local logout must still stop collection while offline or after expiry. */ }
+  finally {
+    clearTimeout(timer);
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(SESSION_KEY);
+  }
 }
 
 export async function sessionHeartbeat(token: string, active: boolean) {

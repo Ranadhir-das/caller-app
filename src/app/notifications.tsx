@@ -84,12 +84,16 @@ export default function NotificationsScreen() {
       if (actionRequest.current === controller) actionRequest.current = null;
       if (focused.current && version === focusVersion.current) {
         setBusy(false);
-        if (item) {
-          const target = websiteLeadNotificationTarget(item.data, user?.role === 'CALLER' && !user.needs_onboarding);
-          if (item.type === 'LEAD_ASSIGNED' && target?.pathname === '/lead-details') {
-            router.push({ ...target, params: { ...target.params, fromNotification: '1' } });
+          if (item) {
+            const isCaller = user?.role === 'CALLER' && !user.needs_onboarding;
+            const isCounselor = user?.role === 'COUNSELOR' && !user.needs_onboarding;
+            const target = websiteLeadNotificationTarget(item.data, isCaller, !!user, isCounselor);
+            if (target) {
+              router.push({ ...target, params: { ...target.params,
+                ...(target.pathname === '/lead-details' ? { fromNotification: '1' } : {}),
+              } } as never);
+            }
           }
-        }
       }
     }
   };
@@ -101,7 +105,7 @@ export default function NotificationsScreen() {
         <Text style={styles.title}>Notifications</Text>
       </View>
       <View style={styles.toolbar}>
-        <Text style={styles.subtitle}>Your latest lead assignments</Text>
+        <Text style={styles.subtitle}>Lead, follow-up, team chat and notice updates</Text>
         <Pressable accessibilityRole="button" disabled={busy || loading} onPress={() => void act()}>
           <Text style={[styles.action, (busy || loading) && styles.dim]}>Mark all as read</Text>
         </Pressable>
@@ -116,7 +120,7 @@ export default function NotificationsScreen() {
           <View style={styles.empty}>
             <NotificationIcon size={44} color={styles.action.color} />
             <Text style={styles.emptyTitle}>No notifications yet</Text>
-            <Text style={styles.subtitle}>New lead assignments will appear here.</Text>
+            <Text style={styles.subtitle}>Your notifications will appear here.</Text>
           </View>
         ) : null}
         renderItem={({ item }) => (

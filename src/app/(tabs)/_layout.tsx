@@ -1,53 +1,17 @@
-import { Redirect } from 'expo-router';
+﻿import { Redirect, Tabs } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-import { Colors } from '@/constants/theme';
+import { CallerTabBar } from '@/components/CallerTabBar';
 
 export default function TabsLayout() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme];
   const { user } = useAuth();
   if (user && user.role !== 'CALLER') return <Redirect href={'/employee' as never} />;
 
   return (
-    <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}
-    >
-      <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          md="home"
-          sf="house.fill"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="leads">
-        <NativeTabs.Trigger.Label>Leads</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          md="group"
-          sf="person.2.fill"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="history">
-        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          md="history"
-          sf="clock.arrow.circlepath"
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="more">
-        <NativeTabs.Trigger.Label>More</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          md="more_horiz"
-          sf="ellipsis.circle"
-        />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Tabs screenOptions={{ headerShown: false }} tabBar={props => <CallerTabBar {...props} />}>
+      <Tabs.Screen name="index" options={{ title: 'Home' }} />
+      <Tabs.Screen name="leads" options={{ title: 'Leads' }} />
+      <Tabs.Screen name="history" options={{ title: 'History' }} />
+      <Tabs.Screen name="more" options={{ title: 'More' }} />
+    </Tabs>
   );
 }

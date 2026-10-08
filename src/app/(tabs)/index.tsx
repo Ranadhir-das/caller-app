@@ -1,3 +1,4 @@
+import { followUpCategory } from '@/services/followUps';
 import { getStatusLabel } from '@/utils/status';
 import { CallerPointsCard } from '@/components/CallerPointsCard';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
@@ -24,10 +25,11 @@ export default function HomeScreen() {
   const { colors } = useAppTheme();
   const { user } = useAuth();
   const displayName = user?.name?.trim() || user?.username || 'Caller';
+  const [, setClock] = useState(Date.now);
   const [greeting, setGreeting] = useState(getGreeting);
 
   useEffect(() => {
-    const refreshGreeting = () => setGreeting(getGreeting());
+    const refreshGreeting = () => { setGreeting(getGreeting()); setClock(Date.now()); };
     const timer = setInterval(refreshGreeting, 60_000);
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') refreshGreeting();
@@ -38,7 +40,7 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const { leads, callHistory, getUpcomingFollowUps, getOverdueFollowUps } = useLeads();
+  const { leads, callHistory, dashboardFollowUps } = useLeads();
   const recentActivity = callHistory
     .slice()
     .sort(
@@ -49,16 +51,13 @@ export default function HomeScreen() {
     .slice(0, 5);
 
   const { session, startSession } = useDialerSession();
-  const upcomingFollowUps =
-    getUpcomingFollowUps();
-  
-  const overdueFollowUps =
-    getOverdueFollowUps();
-
-  const allFollowUps = [
-    ...overdueFollowUps,
-    ...upcomingFollowUps,
-  ];
+  const allFollowUps = dashboardFollowUps.map(item => ({
+    id: String(item.id), leadId: item.lead == null ? null : String(item.lead),
+    name: item.lead_name || leads.find(lead => lead.id === String(item.lead))?.name || item.phone_number || 'Follow-up',
+    phone: item.lead_phone || leads.find(lead => lead.id === String(item.lead))?.phone || item.phone_number,
+    followUpDate: item.scheduled_at, notes: item.notes,
+  }));
+  const overdueFollowUps = allFollowUps.filter(item => followUpCategory(item.followUpDate) === 'Overdue');
 
   const {
     callsAttempted,
@@ -75,9 +74,7 @@ export default function HomeScreen() {
     (lead) => lead.status !== 'pending'
   ).length;
   
-  const followUps = leads.filter(
-    (lead) => lead.status === 'call_back'
-  ).length;
+  const followUps = allFollowUps.length;
 
   const totalStudents = leads.length;
 
@@ -321,12 +318,11 @@ export default function HomeScreen() {
                   key={lead.id}
                   style={styles.followUpCard}
                   onPress={() => {
-                    router.push({
-                      pathname: '/follow-up-details',
-                      params: {
-                        id: lead.id,
-                      },
-                    });
+                    if (lead.leadId && leads.some(item => item.id === lead.leadId)) {
+                      router.push({ pathname: '/follow-up-details', params: { id: lead.leadId } });
+                    } else {
+                      Alert.alert(lead.name, `${lead.phone}\n${new Date(lead.followUpDate).toLocaleString()}\n${lead.notes || ''}`);
+                    }
                   }}
                 >
                   <View
@@ -397,9 +393,7 @@ export default function HomeScreen() {
                             styles.overdueDateLabel,
                         ]}
                       >
-                        {isOverdue
-                          ? 'Overdue'
-                          : 'Follow-up'}
+                        {followUpCategory(lead.followUpDate)}
                       </Text>
 
                       <Text
@@ -409,23 +403,20 @@ export default function HomeScreen() {
                             styles.overdueDateText,
                         ]}
                       >
-                        {formattedDate}
+                        {formattedDate} {followUpDate?.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                       </Text>
                     </View>
                   </View>
 
                   <Pressable
                     style={styles.followUpCallButton}
+                    disabled={!!lead.leadId && !leads.some(item => item.id === lead.leadId)}
                     onPress={(event) => {
                       event.stopPropagation();
 
-                      router.push({
-                        pathname:
-                          '/dialer',
-                        params: {
-                          id: lead.id,
-                        },
-                      });
+                      router.push(lead.leadId
+                        ? { pathname: '/dialer', params: { id: lead.leadId } }
+                        : { pathname: '/direct-dialer', params: { phone_number: lead.phone } });
                     }}
                   >
                     <Text

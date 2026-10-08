@@ -1,3 +1,4 @@
+import { AUTO_CALL_RECORDING_ENABLED } from '@/services/recordingPolicy';
 import { acknowledgeCallStarted } from '@/services/callLifecycle';
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { useDialerSession } from '@/context/DialerSessionContext';
@@ -247,7 +248,7 @@ function ActiveDialer() {
     navigatingRef.current = true;
     callAttemptStateRef.current = 'DISCONNECTED';
     let recordingPath: string | undefined;
-    if (recordingArmedRef.current) {
+    if (AUTO_CALL_RECORDING_ENABLED && recordingArmedRef.current) {
       try {
         // Use the existing idempotent stop method and wait for the file to close.
         recordingPath = (await CallstateModule.stopRecording()) || undefined;
@@ -794,8 +795,8 @@ function ActiveDialer() {
       return;
     }
 
-    // Recording is optional: denial/preparation failure must never prevent calling.
-    try {
+    // Temporarily paused; preserve the native implementation for later re-enabling.
+    if (AUTO_CALL_RECORDING_ENABLED) try {
       const audioPermission = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         {

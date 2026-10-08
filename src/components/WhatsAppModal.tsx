@@ -18,6 +18,7 @@ import {
   listWhatsAppTemplates,
   type WhatsAppTemplate,
 } from "@/services/whatsapp";
+import { NoteInputWithVoice } from "@/components/NoteInputWithVoice";
 
 interface WhatsAppModalProps {
   visible: boolean;
@@ -197,14 +198,12 @@ export function WhatsAppModal({
 
           {/* Message input */}
           <Text style={styles.sectionHeading}>Message (Editable)</Text>
-          <TextInput
-            style={styles.messageInput}
-            multiline
-            numberOfLines={4}
+          <NoteInputWithVoice
             value={message}
             onChangeText={setMessage}
-            placeholder="Type your WhatsApp message..."
-            placeholderTextColor="#888"
+            placeholder="Type your WhatsApp message (tap mic to speak)..."
+            multiline
+            numberOfLines={4}
           />
 
           <Text style={styles.disclaimer}>

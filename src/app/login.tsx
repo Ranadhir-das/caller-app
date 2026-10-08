@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { getCurrentCoords } from "@/services/location";
+import { homeRouteFor } from "@/services/counselor";
 import { useState } from "react";
 import {
     ActivityIndicator,
@@ -18,6 +19,9 @@ import {
     TextInput,
     View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareContainer } from "@/components/KeyboardAwareContainer";
+import { NoteInputWithVoice } from "@/components/NoteInputWithVoice";
 
 type PendingChallenge = {
   id: string;
@@ -72,7 +76,7 @@ export default function LoginScreen() {
         const location = await getCurrentCoords();
         const verified = await completeLogin(result.challenge, undefined, undefined, location, loginRemark.trim() || undefined);
         if ("token" in verified) {
-          router.replace("/employee" as never);
+          router.replace(homeRouteFor(verified.user) as never);
         } else {
           Alert.alert("Almost there", verified.detail);
         }
@@ -137,7 +141,7 @@ export default function LoginScreen() {
       );
 
       if ("token" in verified) {
-        router.replace("/employee" as never);
+        router.replace(homeRouteFor(verified.user) as never);
       } else {
         Alert.alert("Submitted", verified.detail);
         setChallenge(null);
@@ -158,11 +162,8 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <View style={styles.content}>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAwareContainer contentContainerStyle={styles.content}>
         <Image
           source={require('@/assets/images/vaani-mark.png')}
           style={styles.logo}
@@ -208,18 +209,14 @@ export default function LoginScreen() {
                   <Text style={styles.charCounter}>{loginRemark.length}/500</Text>
                 </View>
 
-                <TextInput
-                  placeholderTextColor={colors.placeholder}
-                  keyboardAppearance={mode}
-                  style={styles.remarkInput}
-                  placeholder="Optional: explain if you are logging in late"
+                <NoteInputWithVoice
+                  placeholder="Optional: explain if you are logging in late (tap mic to speak)..."
                   value={loginRemark}
                   onChangeText={(text) => setLoginRemark(text.slice(0, 500))}
                   multiline
                   numberOfLines={3}
                   maxLength={500}
                   editable={!loading}
-                  textAlignVertical="top"
                 />
               </View>
             )}
@@ -309,8 +306,8 @@ export default function LoginScreen() {
             </Pressable>
           </View>
         )}
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAwareContainer>
+    </SafeAreaView>
   );
 }
 
@@ -321,9 +318,10 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
 
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: 24,
+    paddingVertical: 24,
   },
 
   logo: {

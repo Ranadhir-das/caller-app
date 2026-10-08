@@ -61,6 +61,7 @@ function dialerHarness(markCallStarted, options = {}) {
     '@/context/AuthContext': {useAuth: () => ({user:{id:1}})},
     '@/services/callLifecycle': {acknowledgeCallStarted: ack},
     '@/services/callDrafts': {newCallId: () => 'draft', patchCallDraft: async () => {}, saveCallDraft: async () => {}},
+    '@/services/recordingPolicy': {AUTO_CALL_RECORDING_ENABLED: false},
     'expo-router': {router:{replace: route => routes.push(route)}, useLocalSearchParams: () => ({id:'1', isClaimed:'1'})},
     react: {useEffect: f => effects.push(f), useState: v => [v, () => {}], useRef: v => ({current:v})},
     'react/jsx-runtime': {jsx: () => null, jsxs: () => null},

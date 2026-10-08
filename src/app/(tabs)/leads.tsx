@@ -125,6 +125,8 @@ export default function LeadsScreen() {
     { id: 'all_waiting', label: 'Call Waiting' },
     { id: 'not_reachable', label: 'Not Reachable' },
     { id: 'ringing', label: 'Ringing' },
+    { id: 'admission_done_by_other_consultancy', label: 'Admission done by other consultancy' },
+    { id: 'b2b', label: 'B2B' },
   ];
 
   const filteredLeads = useMemo(() => {

@@ -63,7 +63,9 @@ type CallOutcome =
   | 'admission_done'
   | 'all_waiting'
   | 'not_reachable'
-  | 'ringing';
+  | 'ringing'
+  | 'admission_done_by_other_consultancy'
+  | 'b2b';
 
 type DialerSessionContextType = {
   session: DialerSession;

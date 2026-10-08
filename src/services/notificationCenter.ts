@@ -61,7 +61,7 @@ export async function markAllNotificationsRead(token: string, signal?: AbortSign
 
 /** Old/malformed payloads still open a valid lead; read failures never block taps. */
 export async function markPushNotificationRead(token: string, data: Record<string, unknown>, signal?: AbortSignal) {
-  if (data.type !== 'LEAD_ASSIGNED') return;
+  if (!['LEAD_ASSIGNED', 'TEAM_CHAT', 'NOTICE', 'FOLLOWUP_DUE'].includes(String(data.type))) return;
   try { await markNotificationRead(token, data.notification_id, signal); }
   catch { if (__DEV__) console.warn('[Notifications] Could not mark notification read.'); }
 }

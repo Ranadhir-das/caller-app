@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -16,26 +15,56 @@ import { router, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { AnimatedBackButton } from '@/components/AnimatedBackButton';
+import { KeyboardAwareContainer } from '@/components/KeyboardAwareContainer';
+import { NoteInputWithVoice } from '@/components/NoteInputWithVoice';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useLeads } from '@/context/LeadContext';
 import {
-  createWalkInCounselling,
+  createCounselling,
+  getCallerCounsellings,
   getLeadCounsellings,
   type CounsellingRecord,
 } from '@/services/counselling';
 
-export default function WalkInCounsellingScreen() {
+export default function CounsellingScreen() {
   const styles = useAppStyles(createStyles);
   const { colors } = useAppTheme();
   const { token } = useAuth();
-  const { refresh: refreshLeads } = useLeads();
-  const { leadId, leadName, leadPhone, college: initialCollege } = useLocalSearchParams<{
+  const { refresh: refreshLeads, leads } = useLeads();
+  const { leadId: initialLeadId, leadName: initialLeadName, leadPhone: initialLeadPhone, college: initialCollege } = useLocalSearchParams<{
     leadId: string;
     leadName?: string;
     leadPhone?: string;
     college?: string;
   }>();
+
+  const VISITOR_SOURCES = [
+    'Walk-in / Direct',
+    'Website',
+    'Social Media',
+    'Referral',
+    'Phone Call',
+    'Education Fair',
+    'Other',
+  ] as const;
+
+  const [leadId, setLeadId] = useState(initialLeadId || '');
+  const [newVisitor, setNewVisitor] = useState(false);
+  const [visitorName, setVisitorName] = useState('');
+  const [visitorPhone, setVisitorPhone] = useState('');
+  const [visitorEmail, setVisitorEmail] = useState('');
+  const [visitorSource, setVisitorSource] = useState('Walk-in / Direct');
+  const [selectedSourceOption, setSelectedSourceOption] = useState<string>('Walk-in / Direct');
+  const [customSource, setCustomSource] = useState('');
+  const [search, setSearch] = useState('');
+  const [type, setType] = useState<'WALK_IN' | 'GOOGLE_MEET'>('WALK_IN');
+  const selectedLead = leads.find(lead => lead.id === leadId);
+  const leadName = selectedLead?.name || (leadId === initialLeadId ? initialLeadName : '');
+  const leadPhone = selectedLead?.phone || (leadId === initialLeadId ? initialLeadPhone : '');
+  const matchingLeads = search.trim()
+    ? leads.filter(lead => `${lead.name} ${lead.phone}`.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 10)
+    : [];
 
   const [collegeInput, setCollegeInput] = useState(initialCollege || '');
   const [courseInput, setCourseInput] = useState('');
@@ -43,31 +72,50 @@ export default function WalkInCounsellingScreen() {
   const [conductedDate, setConductedDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const saving = useRef(false);
+  const historyRequest = useRef(0);
 
   // Prior history
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
   const [counsellings, setCounsellings] = useState<CounsellingRecord[]>([]);
 
   const loadHistory = useCallback(async () => {
-    if (!token || !leadId) return;
+    if (!token) return;
+    const request = ++historyRequest.current;
     setHistoryLoading(true);
+    setHistoryError(false);
+    setCounsellings([]);
     try {
-      const data = await getLeadCounsellings(token, leadId);
-      setCounsellings(data.counsellings);
+      const data = leadId ? await getLeadCounsellings(token, leadId) : await getCallerCounsellings(token);
+      if (request === historyRequest.current) setCounsellings(data.counsellings);
     } catch {
-      // Non-fatal if prior history cannot be loaded
+      if (request === historyRequest.current) setHistoryError(true);
     } finally {
-      setHistoryLoading(false);
+      if (request === historyRequest.current) setHistoryLoading(false);
     }
   }, [token, leadId]);
 
   useEffect(() => {
     void loadHistory();
+    return () => { historyRequest.current += 1; };
   }, [loadHistory]);
 
   const handleSave = async () => {
-    if (!leadId) {
-      Alert.alert('Missing Lead', 'No lead selected for walk-in counselling.');
+    if (saving.current) return;
+    if (!newVisitor && !leadId) {
+      Alert.alert('Select a Student', 'Choose a student from your assigned leads.');
+      return;
+    }
+    if (newVisitor && (!visitorName.trim() || !visitorPhone.trim())) {
+      Alert.alert('Visitor Details', 'Enter the visitor name and phone number.');
+      return;
+    }
+    const finalSource = newVisitor
+      ? (selectedSourceOption === 'Other' ? customSource.trim() : visitorSource.trim())
+      : '';
+    if (newVisitor && !finalSource) {
+      Alert.alert('Visitor Source', 'Please select or enter the visitor source.');
       return;
     }
     if (!token) {
@@ -75,11 +123,19 @@ export default function WalkInCounsellingScreen() {
       return;
     }
 
+    saving.current = true;
     setSubmitting(true);
     try {
-      await createWalkInCounselling(token, {
-        lead_id: Number(leadId),
-        counselling_type: 'WALK_IN',
+      await createCounselling(token, {
+        ...(newVisitor
+          ? {
+              visitor_name: visitorName.trim(),
+              visitor_phone: visitorPhone.trim(),
+              visitor_email: visitorEmail.trim(),
+              visitor_source: finalSource,
+            }
+          : { lead_id: Number(leadId) }),
+        counselling_type: type,
         college: collegeInput.trim(),
         course: courseInput.trim(),
         notes: notesInput.trim(),
@@ -88,8 +144,8 @@ export default function WalkInCounsellingScreen() {
 
       await refreshLeads();
       Alert.alert(
-        'Walk-in Counselling Recorded',
-        `Counselling consultation for ${leadName || 'student'} has been saved successfully.`,
+        'Counselling Recorded',
+        `Counselling consultation for ${(newVisitor ? visitorName.trim() : leadName) || 'student'} has been saved successfully.`,
         [
           {
             text: 'OK',
@@ -101,36 +157,112 @@ export default function WalkInCounsellingScreen() {
       console.error('Record counselling failed:', error);
       Alert.alert(
         'Recording Failed',
-        error instanceof Error ? error.message : 'Could not save walk-in counselling.'
+        error instanceof Error ? error.message : 'Could not save counselling.'
       );
     } finally {
+      saving.current = false;
       setSubmitting(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <View style={styles.keyboardView}>
         {/* Header */}
         <View style={styles.header}>
           <AnimatedBackButton />
           <View style={styles.headerTitles}>
-            <Text style={styles.headerTitle}>Walk-in Counselling</Text>
+            <Text style={styles.headerTitle}>Counselling</Text>
             <Text style={styles.headerSubtitle}>
-              Record in-person student counselling consultation
+              Record walk-in or Google Meet counselling
             </Text>
           </View>
         </View>
 
-        <ScrollView
+        <KeyboardAwareContainer
           contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
         >
           {/* Student Info Card */}
-          <View style={styles.studentCard}>
+          {!initialLeadId && <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+            {([false, true] as const).map(value => <Pressable key={String(value)} accessibilityRole="radio"
+              accessibilityState={{ checked: newVisitor === value }} disabled={submitting}
+              onPress={() => { setNewVisitor(value); setLeadId(''); }}
+              style={[styles.studentOption, { flex: 1 }, newVisitor === value && styles.selectedOption]}>
+              <Text style={styles.studentName}>{value ? 'New visitor' : 'Existing lead'}</Text>
+            </Pressable>)}
+          </View>}
+          {newVisitor && <View style={styles.formSection}>
+            <Text style={styles.fieldLabel}>Visitor name *</Text>
+            <TextInput style={styles.input} value={visitorName} onChangeText={setVisitorName} maxLength={200}
+              placeholder="Full name" placeholderTextColor={colors.placeholder} />
+            <Text style={styles.fieldLabel}>Phone number *</Text>
+            <TextInput style={styles.input} value={visitorPhone} onChangeText={setVisitorPhone} maxLength={30}
+              keyboardType="phone-pad" placeholder="Phone number" placeholderTextColor={colors.placeholder} />
+            <Text style={styles.fieldLabel}>Email (optional)</Text>
+            <TextInput style={styles.input} value={visitorEmail} onChangeText={setVisitorEmail}
+              keyboardType="email-address" autoCapitalize="none" placeholder="Email address" placeholderTextColor={colors.placeholder} />
+            <Text style={styles.fieldLabel}>Source *</Text>
+            <View style={styles.sourceChipsRow}>
+              {VISITOR_SOURCES.map((source) => {
+                const isSelected = selectedSourceOption === source;
+                return (
+                  <Pressable
+                    key={source}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: isSelected }}
+                    disabled={submitting}
+                    onPress={() => {
+                      setSelectedSourceOption(source);
+                      if (source !== 'Other') {
+                        setVisitorSource(source);
+                      } else {
+                        setVisitorSource(customSource.trim());
+                      }
+                    }}
+                    style={[
+                      styles.sourceChip,
+                      isSelected && styles.sourceChipSelected,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.sourceChipText,
+                        isSelected && styles.sourceChipTextSelected,
+                      ]}
+                    >
+                      {source}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {selectedSourceOption === 'Other' && (
+              <TextInput
+                style={[styles.input, { marginTop: 4 }]}
+                value={customSource}
+                onChangeText={(text) => {
+                  setCustomSource(text);
+                  setVisitorSource(text);
+                }}
+                maxLength={100}
+                placeholder="Enter custom visitor source *"
+                placeholderTextColor={colors.placeholder}
+              />
+            )}
+          </View>}
+          {!initialLeadId && !newVisitor && <View style={styles.formSection}>
+            <Text style={styles.fieldLabel}>Select student</Text>
+            <TextInput style={styles.input} value={search} onChangeText={setSearch}
+              placeholder="Search your leads by name or phone" placeholderTextColor={colors.placeholder} />
+            {matchingLeads.map(lead => <Pressable key={lead.id} accessibilityRole="radio"
+              accessibilityState={{ checked: lead.id === leadId }} disabled={submitting}
+              onPress={() => { setLeadId(lead.id); setSearch(''); }}
+              style={[styles.studentOption, lead.id === leadId && styles.selectedOption]}>
+              <Text style={styles.studentName}>{lead.name}</Text><Text style={styles.studentPhone}>{lead.phone}</Text>
+            </Pressable>)}
+            {!!search.trim() && !matchingLeads.length && <Text style={styles.historyEmpty}>No matching assigned leads.</Text>}
+          </View>}
+          {!newVisitor && !!leadId && <View style={styles.studentCard}>
             <View style={styles.studentAvatar}>
               <Text style={styles.studentAvatarText}>
                 {(leadName || 'S').charAt(0).toUpperCase()}
@@ -143,10 +275,18 @@ export default function WalkInCounsellingScreen() {
                 <Text style={styles.studentLeadId}>Lead #{leadId}</Text>
               ) : null}
             </View>
-          </View>
+          </View>}
 
           {/* Form */}
           <View style={styles.formSection}>
+            <Text style={styles.fieldLabel}>Counselling type</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {(['WALK_IN', 'GOOGLE_MEET'] as const).map(value => <Pressable key={value} accessibilityRole="radio"
+                accessibilityState={{ checked: type === value }} disabled={submitting} onPress={() => setType(value)}
+                style={[styles.studentOption, { flex: 1 }, type === value && styles.selectedOption]}>
+                <Text style={styles.studentName}>{value === 'WALK_IN' ? 'Walk-in' : 'Google Meet'}</Text>
+              </Pressable>)}
+            </View>
             <Text style={styles.fieldLabel}>College / Institution</Text>
             <TextInput
               style={styles.input}
@@ -194,15 +334,13 @@ export default function WalkInCounsellingScreen() {
             )}
 
             <Text style={styles.fieldLabel}>Discussion &amp; Counselling Notes</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
+            <NoteInputWithVoice
               value={notesInput}
               onChangeText={setNotesInput}
-              placeholder="Details of student interaction, document verification, queries answered, candidate interest level…"
-              placeholderTextColor={colors.placeholder}
+              placeholder="Details of student interaction, document verification, queries answered, candidate interest level (tap mic to speak)…"
               multiline
               numberOfLines={4}
-              textAlignVertical="top"
+              editable={!submitting}
             />
 
             <Pressable
@@ -213,7 +351,7 @@ export default function WalkInCounsellingScreen() {
               {submitting ? (
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
-                <Text style={styles.submitButtonText}>Save Walk-in Counselling 📋</Text>
+                <Text style={styles.submitButtonText}>Save Counselling 📋</Text>
               )}
             </Pressable>
           </View>
@@ -227,9 +365,12 @@ export default function WalkInCounsellingScreen() {
                 color={colors.accent}
                 style={{ marginTop: 12 }}
               />
+            ) : historyError ? (
+              <Pressable onPress={() => void loadHistory()}><Text style={styles.historyEmpty}>Could not load records. Tap to retry.</Text></Pressable>
             ) : counsellings.length > 0 ? (
               counsellings.map((c) => (
                 <View key={c.id} style={styles.historyCard}>
+                  {!leadId && <Text style={styles.studentName}>{c.lead_name}</Text>}
                   <View style={styles.historyCardHeader}>
                     <Text style={styles.historyTypeBadge}>
                       {c.counselling_type_display || 'Walk-in'}
@@ -242,6 +383,11 @@ export default function WalkInCounsellingScreen() {
                       })}
                     </Text>
                   </View>
+                  {(c.visitor_source || c.source) ? (
+                    <Text style={styles.historySource}>
+                      Source: {c.visitor_source || c.source}
+                    </Text>
+                  ) : null}
                   {c.college ? (
                     <Text style={styles.historyCollege}>
                       🏛️ {c.college} {c.course ? `(${c.course})` : ''}
@@ -257,12 +403,12 @@ export default function WalkInCounsellingScreen() {
               ))
             ) : (
               <Text style={styles.historyEmpty}>
-                No previous counselling sessions recorded for this lead.
+                No counselling sessions recorded yet.
               </Text>
             )}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareContainer>
+      </View>
     </SafeAreaView>
   );
 }
@@ -273,6 +419,8 @@ const createStyles = (colors: AppColors) =>
       flex: 1,
       backgroundColor: colors.background,
     },
+    studentOption: { padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, marginTop: 8 },
+    selectedOption: { backgroundColor: colors.accentSoft, borderColor: colors.primary },
     keyboardView: {
       flex: 1,
     },
@@ -460,5 +608,39 @@ const createStyles = (colors: AppColors) =>
       color: colors.muted,
       fontStyle: 'italic',
       marginTop: 4,
+    },
+    sourceChipsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 4,
+      marginBottom: 8,
+    },
+    sourceChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    sourceChipSelected: {
+      backgroundColor: colors.accentSoft,
+      borderColor: colors.primary,
+    },
+    sourceChipText: {
+      fontSize: 12,
+      color: colors.secondary,
+      fontWeight: '500',
+    },
+    sourceChipTextSelected: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    historySource: {
+      fontSize: 12,
+      color: colors.muted,
+      marginBottom: 4,
+      fontWeight: '500',
     },
   });

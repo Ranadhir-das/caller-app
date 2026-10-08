@@ -26,10 +26,58 @@ export function ActionButton({ title, onPress, busy }: { title: string; onPress:
   return <Pressable accessibilityRole="button" disabled={busy} onPress={onPress} style={[styles.button, busy && { opacity: 0.6 }]}><Text style={styles.buttonText}>{title}</Text></Pressable>;
 }
 
-export function FormInput({ label, value, onChangeText, multiline }: { label: string; value: string; onChangeText: (s: string) => void; multiline?: boolean }) {
+import { NoteInputWithVoice } from '@/components/NoteInputWithVoice';
+
+export function FormInput({
+  label,
+  value,
+  onChangeText,
+  multiline,
+  placeholder,
+  withVoice,
+  error,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (s: string) => void;
+  multiline?: boolean;
+  placeholder?: string;
+  withVoice?: boolean;
+  error?: string;
+}) {
   const styles = useAppStyles(makeStyles);
   const { colors, mode } = useAppTheme();
-  return <View style={{ gap: 6 }}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} style={[styles.input, multiline && { minHeight: 85, textAlignVertical: 'top' }]} value={value} onChangeText={onChangeText} multiline={multiline} keyboardAppearance={mode} placeholderTextColor={colors.placeholder} autoCapitalize="none" /></View>;
+
+  if (multiline || withVoice) {
+    return (
+      <NoteInputWithVoice
+        label={label}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        multiline={multiline}
+        error={error}
+      />
+    );
+  }
+
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        accessibilityLabel={label}
+        placeholder={placeholder}
+        style={[styles.input, !!error && { borderColor: colors.danger }]}
+        value={value}
+        onChangeText={onChangeText}
+        multiline={false}
+        keyboardAppearance={mode}
+        placeholderTextColor={colors.placeholder}
+        autoCapitalize="none"
+      />
+      {!!error && <Text style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>}
+    </View>
+  );
 }
 
 export const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

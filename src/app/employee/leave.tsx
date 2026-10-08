@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Alert, Platform, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Alert, Platform, RefreshControl, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme, useAppStyles } from '@/context/AppThemeContext';
 import { useEmployeeWorkspace } from '@/context/EmployeeWorkspaceContext';
 import { ActionButton, DateField, FormInput, isoDate, makeStyles } from '@/components/employee/shared';
+import { KeyboardAwareContainer } from '@/components/KeyboardAwareContainer';
 
 export default function LeaveScreen() {
   const { colors, mode } = useAppTheme();
@@ -17,7 +18,7 @@ export default function LeaveScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.accent} />}>
+      <KeyboardAwareContainer contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.accent} />}>
         <Text style={styles.title}>Leave</Text>
         <View style={styles.card}>
           <Text style={styles.heading}>Apply for leave</Text>
@@ -45,7 +46,7 @@ export default function LeaveScreen() {
         ))}
         <Text style={styles.heading}>Upcoming holidays</Text>
         {data?.holidays.map(h => <Text key={h.id} style={styles.subtitle}>{h.date} - {h.name}</Text>)}
-      </ScrollView>
+      </KeyboardAwareContainer>
     </SafeAreaView>
   );
 }

@@ -113,7 +113,7 @@ export function AuthProvider({
     } catch (error) {
       console.log("Session restore failed:", error);
 
-      await logoutUser();
+      await logoutUser({preserveLocationQueue:true});
 
       setToken(null);
       setUser(null);

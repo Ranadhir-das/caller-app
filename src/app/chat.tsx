@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import * as WebBrowser from "expo-web-browser";
@@ -22,6 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useAppTheme, useAppStyles, AppColors } from "@/context/AppThemeContext";
 import { AnimatedBackButton } from "@/components/AnimatedBackButton";
+import { useSpeechToText } from "@/services/speech";
 import {
   ChatAttachment,
   ChatChannel,
@@ -43,6 +44,7 @@ type PendingAttachment = {
 
 export default function ChatScreen() {
   const { user, token } = useAuth();
+  const { channelId, notificationId } = useLocalSearchParams<{ channelId?: string; notificationId?: string }>();
   const { colors, mode } = useAppTheme();
   const styles = useAppStyles(makeStyles);
 
@@ -57,18 +59,38 @@ export default function ChatScreen() {
   const socketRef = useRef<WebSocket | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
-  useEffect(() => {
-    if (!token) return;
-    listChannels(token)
-      .then((list) => {
-        setChannels(list);
-        setActiveChannel((current) => current ?? list[0] ?? null);
-      })
-      .catch((e) => Alert.alert("Chat", e instanceof Error ? e.message : "Unable to load channels."))
-      .finally(() => setLoading(false));
-  }, [token]);
+  const speech = useSpeechToText({
+    onResult: (spokenText) => {
+      const clean = spokenText.trim();
+      if (!clean) return;
+      setText(current => {
+        if (!current || !current.trim()) return clean;
+        const sep = current.endsWith('\n') || current.endsWith(' ') ? '' : ' ';
+        return `${current}${sep}${clean}`;
+      });
+    },
+  });
 
   useEffect(() => {
+    if (!token) return;
+    let active = true;
+    listChannels(token)
+      .then((list) => {
+        if (!active) return;
+        setChannels(list);
+        if (channelId) {
+          const target = list.find(channel => String(channel.id) === channelId);
+          setActiveChannel(target ?? null);
+          if (!target) Alert.alert('Chat unavailable', 'This chat was removed or you no longer have access.');
+        } else setActiveChannel((current) => current ?? list[0] ?? null);
+      })
+      .catch((e) => Alert.alert("Chat", e instanceof Error ? e.message : "Unable to load channels."))
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [token, channelId, notificationId]);
+
+  useEffect(() => {
+    setMessages([]);
     if (!token || !activeChannel) return;
     let active = true;
 
@@ -81,6 +103,7 @@ export default function ChatScreen() {
     const socket = new WebSocket(chatSocketUrl(activeChannel.id, token));
     socketRef.current = socket;
     socket.onmessage = (event) => {
+      if (!active) return;
       const incoming: ChatMessage = JSON.parse(event.data);
       setMessages((current) =>
         current.some((m) => m.id === incoming.id) ? current : [...current, incoming]
@@ -388,6 +411,19 @@ export default function ChatScreen() {
               onChangeText={setText}
               multiline
             />
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={speech.isListening ? "Stop recording voice" : "Dictate message"}
+              style={[
+                styles.clipButton,
+                speech.isListening && { backgroundColor: colors.danger + '25' },
+              ]}
+              onPress={speech.toggle}
+              hitSlop={8}
+            >
+              <Text style={{ fontSize: 18 }}>{speech.isListening ? "🔴" : "🎙️"}</Text>
+            </Pressable>
 
             <Pressable
               style={[styles.sendButton, !canSend && { opacity: 0.5 }]}

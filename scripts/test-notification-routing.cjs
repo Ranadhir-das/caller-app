@@ -45,3 +45,50 @@ test('foreground presentation does not dispatch tap navigation', () => {
   assert.doesNotMatch(foreground,/onResponse|handleResponse|router/);
   assert.match(service,/shouldShowBanner: true/);
 });
+
+test('team chat tap opens only the authorized chat screen target for employees', () => {
+  const result = target({type:'TEAM_CHAT',channel_id:8,message_id:12}, false, true);
+  assert.equal(result.pathname, '/chat');
+  assert.equal(result.params.channelId, '8');
+});
+test('notice tap targets the notice board for employees', () => {
+  const result = target({type:'NOTICE',notice_id:'9'}, false, true);
+  assert.equal(result.pathname, '/notices');
+  assert.equal(result.params.noticeId, '9');
+});
+test('team events require authentication and valid resource IDs', () => {
+  for (const payload of [{type:'TEAM_CHAT',channel_id:8}, {type:'NOTICE',notice_id:9}])
+    assert.equal(target(payload, false, false), null);
+  for (const id of [undefined,null,0,-1,'../dialer',{},[],true,Number.MAX_SAFE_INTEGER+1]) {
+    assert.equal(target({type:'TEAM_CHAT',channel_id:id},false,true),null);
+    assert.equal(target({type:'NOTICE',notice_id:id},false,true),null);
+  }
+  assert.equal(target({type:'LEAD_ASSIGNED',lead_id:12},false,true),null);
+});
+
+test('followup due notification routes caller to lead details when lead_id exists', () => {
+  const result = target({type:'FOLLOWUP_DUE', lead_id: 55, followup_id: 12}, true, true);
+  assert.equal(result.pathname, '/lead-details');
+  assert.equal(result.params.id, '55');
+});
+
+test('followup due notification routes caller to home tab when lead_id is missing', () => {
+  const result = target({type:'FOLLOWUP_DUE', followup_id: 12, phone: '9876543210'}, true, true);
+  assert.equal(result.pathname, '/(tabs)');
+});
+
+test('noncallers or unauthenticated users cannot open follow-up notifications', () => {
+  assert.equal(target({type:'FOLLOWUP_DUE', lead_id: 55}, false, false), null);
+  assert.equal(target({type:'FOLLOWUP_DUE', lead_id: 55}, false, true), null);
+});
+
+test('counselor forwarded notification routes counselor to counselor lead details', () => {
+  const result = target({ type: 'COUNSELOR_LEAD_FORWARDED', lead_id: 88, assignment_id: 3 }, false, true, true);
+  assert.equal(result.pathname, '/counselor-lead');
+  assert.equal(result.params.id, '88');
+});
+
+test('caller or unauthenticated user cannot open counselor forwarded notification', () => {
+  assert.equal(target({ type: 'COUNSELOR_LEAD_FORWARDED', lead_id: 88 }, true, true, false), null);
+  assert.equal(target({ type: 'COUNSELOR_LEAD_FORWARDED', lead_id: 88 }, false, false, false), null);
+});

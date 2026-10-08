@@ -1,3 +1,5 @@
+import { loadFollowUps, DashboardFollowUp } from '@/services/followUps';
+import type { InterestedDetails } from '@/types';
 import React, {
   createContext,
   useContext,
@@ -40,6 +42,7 @@ type UpdateLeadData = {
 // --------------------------------------------------
 
 export type ApiLead = {
+  preferred_course?: string | null; preferred_course_custom?: string; interested_details?: InterestedDetails | null;
   batch_id?: number | null;
   batch_name?: string;
   id: number;
@@ -106,6 +109,10 @@ function mapApiStatus(
       return 'not_reachable';
     case 'RINGING':
       return 'ringing';
+    case 'ADMISSION_DONE_BY_OTHER_CONSULTANCY':
+      return 'admission_done_by_other_consultancy';
+    case 'B2B':
+      return 'b2b';
 
     case 'WRONG_NUMBER':
       return 'wrong_number';
@@ -123,6 +130,7 @@ export function mapApiLead(
   lead: ApiLead
 ): Lead {
   return {
+    preferredCourse: lead.preferred_course, preferredCourseCustom: lead.preferred_course_custom, interestedDetails: lead.interested_details,
     id: String(lead.id),
     batchId: lead.batch_id,
     batchName: lead.batch_name || "Unbatched leads",
@@ -191,6 +199,7 @@ type LeadContextType = {
   refreshing: boolean;
   refreshError: string | null;
   leads: Lead[];
+  dashboardFollowUps: DashboardFollowUp[];
   availableLeads: AvailableLead[];
   loadingAvailable: boolean;
   availableError: string | null;
@@ -238,6 +247,7 @@ export function LeadProvider({
   children: React.ReactNode;
 }) {
   const { token: sessionToken, user } = useAuth();
+  const [dashboardFollowUps, setDashboardFollowUps] = useState<DashboardFollowUp[]>([]);
   const [leads, setLeads] =
     useState<Lead[]>([]);
 
@@ -258,6 +268,7 @@ export function LeadProvider({
   useEffect(() => {
     let cancelled = false;
     let inFlight = false;
+    setDashboardFollowUps([]);
     setLeads([]);
     setCallHistory([]);
     setAvailableLeads([]);
@@ -268,27 +279,33 @@ export function LeadProvider({
       setRefreshError(null);
       setAvailableError(null);
       try {
-        const [leadResponse, historyResponse, availableResponse] = await Promise.all([
+        const [leadResponse, historyResponse, availableResponse, followUpResponse] = await Promise.all([
           apiRequest<ApiLead[]>('/mobile/leads/', { token: sessionToken }),
           apiRequest<Array<{
             id: number; lead: number | null; lead_name: string | null; lead_phone: string | null;
             phone_number: string; duration_seconds: number; followup?: { scheduled_at: string; status: string } | null;
+            selected_course?: string | null; selected_course_custom?: string; expected_admission_year?: number | null;
+            course_classification?: string; outcome_points?: number; whatsapp_message?: string;
             outcome: string; notes: string; started_at: string; ended_at: string | null;
           }>>('/calls/mine/', { token: sessionToken }),
           apiRequest<ApiAvailableLead[]>('/mobile/leads/available/?category=WEBSITE', { token: sessionToken }).catch((err) => {
             console.warn('Failed to load available website leads:', err);
             return [] as ApiAvailableLead[];
           }),
+          loadFollowUps(sessionToken),
         ]);
         if (cancelled) return;
         setLeads(leadResponse.map(lead => {
-          const pending = historyResponse.find(call => call.lead === lead.id && call.followup?.status === 'PENDING');
-          return { ...mapApiLead(lead), followUpDate: pending?.followup?.scheduled_at };
+          const pending = followUpResponse.find(item => item.lead === lead.id);
+          return { ...mapApiLead(lead), followUpDate: pending?.scheduled_at };
         }));
+        setDashboardFollowUps(followUpResponse);
         setCallHistory(historyResponse.map(call => ({
           id: String(call.id), leadId: call.lead == null ? '' : String(call.lead), leadName: call.lead_name || call.phone_number || 'External call',
           phone: call.phone_number || call.lead_phone || '', isExternal: call.lead == null,
           durationSeconds: call.duration_seconds, followUpDate: call.followup?.scheduled_at, followUpStatus: call.followup?.status, outcome: mapApiStatus(call.outcome),
+          selectedCourse: call.selected_course, customCourse: call.selected_course_custom, admissionYear: call.expected_admission_year,
+          courseClassification: call.course_classification, outcomePoints: call.outcome_points, whatsappMessage: call.whatsapp_message,
           notes: call.notes, calledAt: call.ended_at || call.started_at,
         })));
         setAvailableLeads(
@@ -470,8 +487,6 @@ export function LeadProvider({
           );
 
           return (
-            lead.status ===
-              'call_back' &&
             followUpDate >=
               today
           );
@@ -524,8 +539,6 @@ export function LeadProvider({
           );
 
           return (
-            lead.status ===
-              'call_back' &&
             followUpDate <
               today
           );
@@ -663,6 +676,7 @@ export function LeadProvider({
         refreshing,
         refreshError,
         leads,
+        dashboardFollowUps,
         availableLeads,
         loadingAvailable,
         availableError,
@@ -682,6 +696,7 @@ export function LeadProvider({
         refreshing,
         refreshError,
         leads,
+        dashboardFollowUps,
         availableLeads,
         loadingAvailable,
         availableError,

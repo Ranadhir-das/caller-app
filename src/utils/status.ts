@@ -41,6 +41,10 @@ export function getStatusLabel(
       return 'Not Reachable';
     case 'ringing':
       return 'Ringing';
+    case 'admission_done_by_other_consultancy':
+      return 'Admission done by other consultancy';
+    case 'b2b':
+      return 'B2B';
 
     default:
       return status;
@@ -63,6 +67,8 @@ export function getStatusColor(
       all_waiting: '#B4BED0',
       not_reachable: '#B4BED0',
       ringing: '#B4BED0',
+      admission_done_by_other_consultancy: '#B4BED0',
+      b2b: '#93C5FD',
     };
     return colors[status];
   }

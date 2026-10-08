@@ -82,6 +82,14 @@ test('push read errors are nonfatal and exact persistent ID is used', async () =
   await service.markPushNotificationRead('session', { type: 'LEAD_ASSIGNED', lead_id: 42, notification_id: 9 });
   assert.equal(calls[0][0], '/mobile/notifications/9/read/');
 });
+
+test('team chat, notice and followup push taps mark the exact inbox entry read', async () => {
+  for (const type of ['TEAM_CHAT', 'NOTICE', 'FOLLOWUP_DUE']) {
+    const {service, calls} = api(item);
+    await service.markPushNotificationRead('session', {type,notification_id:17});
+    assert.equal(calls[0][0], '/mobile/notifications/17/read/');
+  }
+});
 test('assigned lead IDs are validated and taps cannot bypass auth', () => {
   assert.equal(route({ type: 'LEAD_ASSIGNED', lead_id: '42' }, true).params.id, '42');
   for (const id of [undefined, 0, -1, 'bad', {}, true]) assert.equal(route({ type: 'LEAD_ASSIGNED', lead_id: id }, true), null);

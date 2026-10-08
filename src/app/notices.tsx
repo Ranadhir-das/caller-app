@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { router } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
@@ -20,24 +19,45 @@ import {
   listNotices,
   Notice,
   NoticeAttachment,
-  resolveNoticeAttachmentUrl,
 } from "@/services/notices";
+import { cleanupNoticeAttachmentCache, noticeAttachmentImageSource, openNoticeAttachment } from '@/services/noticeAttachments';
 
 export default function NoticesScreen() {
   const { token } = useAuth();
+  const { noticeId, notificationId } = useLocalSearchParams<{ noticeId?: string; notificationId?: string }>();
   const { colors } = useAppTheme();
   const styles = useAppStyles(makeStyles);
 
   const [notices, setNotices] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const listRef = useRef<FlatList<Notice>>(null);
+  const focusNotice = useRef(false);
+  const [openingAttachments, setOpeningAttachments] = useState<Set<string>>(new Set());
+  const openingRef = useRef(new Set<string>());
+  const attachmentSession = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    attachmentSession.current = controller;
+    openingRef.current = new Set();
+    setOpeningAttachments(new Set());
+    void cleanupNoticeAttachmentCache();
+    return () => controller.abort();
+  }, [token]);
 
   const load = useCallback(() => {
     if (!token) return Promise.resolve();
     return listNotices(token)
-      .then(setNotices)
+      .then(list => {
+        focusNotice.current = !!noticeId;
+        if (noticeId && !list.some(notice => String(notice.id) === noticeId)) {
+          Alert.alert('Notice unavailable', 'This notice was removed or is no longer available to you.');
+        }
+        setNotices(noticeId ? [...list].sort((a, b) => Number(String(b.id) === noticeId) - Number(String(a.id) === noticeId)) : list);
+      })
       .catch((e) => Alert.alert("Notices", e instanceof Error ? e.message : "Unable to load notices."));
-  }, [token]);
+  }, [token, noticeId, notificationId]);
 
   useEffect(() => {
     load().finally(() => setLoading(false));
@@ -48,12 +68,25 @@ export default function NoticesScreen() {
     load().finally(() => setRefreshing(false));
   }, [load]);
 
-  const handleOpenAttachment = async (att: NoticeAttachment) => {
-    const fullUrl = resolveNoticeAttachmentUrl(att.file_url);
+  const handleOpenAttachment = async (noticeId: number, att: NoticeAttachment) => {
+    const key = `${noticeId}:${att.id}`;
+    const controller = attachmentSession.current;
+    if (openingRef.current.has(key) || controller?.signal.aborted) return;
+    if (!token || !controller) {
+      Alert.alert('Sign in required', 'Please sign in again to open this attachment.');
+      return;
+    }
+    openingRef.current.add(key);
+    setOpeningAttachments(new Set(openingRef.current));
     try {
-      await WebBrowser.openBrowserAsync(fullUrl);
-    } catch {
-      Alert.alert("Unable to open file", "Could not open attachment.");
+      await openNoticeAttachment(noticeId, att, token, controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) Alert.alert('Unable to open file', error instanceof Error ? error.message : 'Could not download the attachment. Please try again.');
+    } finally {
+      if (!controller.signal.aborted) {
+        openingRef.current.delete(key);
+        setOpeningAttachments(new Set(openingRef.current));
+      }
     }
   };
 
@@ -68,12 +101,17 @@ export default function NoticesScreen() {
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
       ) : (
         <FlatList
+          ref={listRef}
           data={notices}
+          extraData={openingAttachments}
+          onContentSizeChange={() => {
+            if (focusNotice.current) { focusNotice.current = false; listRef.current?.scrollToOffset({ offset: 0, animated: false }); }
+          }}
           keyExtractor={(n) => String(n.id)}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
           renderItem={({ item }) => (
-            <View style={styles.card}>
+            <View style={[styles.card, String(item.id) === noticeId && { borderColor: colors.accent, borderWidth: 2 }]}>
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>{item.title}</Text>
                 <View style={styles.badge}>
@@ -91,18 +129,22 @@ export default function NoticesScreen() {
                   {item.attachments.map((att) => {
                     const isImage = att.mime_type.includes("image");
                     const isVideo = att.mime_type.includes("video");
-                    const fullUrl = resolveNoticeAttachmentUrl(att.file_url);
+                    const opening = openingAttachments.has(`${item.id}:${att.id}`);
                     const sizeStr = `${(att.file_size / 1024).toFixed(0)} KB`;
 
                     return (
                       <Pressable
                         key={att.id}
                         style={styles.attachmentCard}
-                        onPress={() => handleOpenAttachment(att)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${att.original_filename}`}
+                        accessibilityState={{ busy: opening, disabled: opening }}
+                        disabled={opening}
+                        onPress={() => handleOpenAttachment(item.id, att)}
                       >
                         {isImage ? (
                           <Image
-                            source={{ uri: fullUrl }}
+                            source={token ? noticeAttachmentImageSource(item.id, att.id, token) : undefined}
                             style={styles.attachmentThumb}
                             resizeMode="cover"
                           />
@@ -121,7 +163,7 @@ export default function NoticesScreen() {
                             {isImage ? "Image" : isVideo ? "Video" : "Document"} · {sizeStr}
                           </Text>
                         </View>
-                        <Text style={styles.attachmentArrow}>↗</Text>
+                        {opening ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={styles.attachmentArrow}>↗</Text>}
                       </Pressable>
                     );
                   })}

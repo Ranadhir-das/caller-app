@@ -67,6 +67,8 @@ export default function HistoryScreen() {
     { id: 'all_waiting', label: 'Call Waiting' },
     { id: 'not_reachable', label: 'Not Reachable' },
     { id: 'ringing', label: 'Ringing' },
+    { id: 'admission_done_by_other_consultancy', label: 'Admission done by other consultancy' },
+    { id: 'b2b', label: 'B2B' },
   ];
 
   const filteredHistory = useMemo(() => {
@@ -127,6 +129,10 @@ export default function HistoryScreen() {
         return 'Not Reachable';
       case 'ringing':
         return 'Ringing';
+      case 'admission_done_by_other_consultancy':
+        return 'Admission done by other consultancy';
+      case 'b2b':
+        return 'B2B';
 
       default:
         return 'Called';

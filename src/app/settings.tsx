@@ -1,20 +1,15 @@
-import { Alert, Linking, Pressable, StyleSheet, Switch, Text, View, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Switch, Text, View, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedBackButton } from '@/components/AnimatedBackButton';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
-import { APP_DOWNLOAD_URL } from '@/services/api';
+import { AppUpdatePanel } from '@/components/AppUpdatePanel';
 
 export default function SettingsScreen() {
   const { mode, colors, toggleTheme } = useAppTheme();
   const styles = useAppStyles(createStyles);
 
-  const openDownloadPage = async () => {
-    try {
-      await Linking.openURL(APP_DOWNLOAD_URL);
-    } catch {
-      Alert.alert('Could not open the page', `Visit ${APP_DOWNLOAD_URL} in your browser to check for updates.`);
-    }
-  };
+  const [showUpdater, setShowUpdater] = useState(false);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -31,13 +26,14 @@ export default function SettingsScreen() {
         </View>
         <Text style={styles.description}>Your theme preference is saved on this device and applies throughout the app.</Text>
 
-        <Pressable accessibilityRole="button" style={({ pressed }) => [styles.card, pressed && styles.cardPressed]} onPress={openDownloadPage}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: showUpdater }} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]} onPress={() => setShowUpdater(value => !value)}>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Update app</Text>
-            <Text style={styles.description}>Get the latest version from the Vaani download page.</Text>
+            <Text style={styles.description}>Check, download and install Android app updates.</Text>
           </View>
           <Text style={styles.chevron}>↗</Text>
         </Pressable>
+        {showUpdater && <AppUpdatePanel />}
       </ScrollView>
     </SafeAreaView>
   );

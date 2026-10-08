@@ -1,5 +1,5 @@
 export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.1.32:8000/api/v1"
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.31.188:8000/api/v1"
 ).replace(/\/+$/, "");
 
 // The CRM's own app-introduction/download page, on whatever host this build
@@ -17,7 +17,59 @@ type ApiOptions = {
 };
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(message); this.name = 'ApiError'; }
+  constructor(message: string, public status: number, public details?: unknown) { super(message); this.name = 'ApiError'; }
+}
+
+export function apiAuthHeaders(token: string): Record<string, string> {
+  return { Authorization: `Token ${token}` };
+}
+
+/** Binary downloads use the same API origin and employee credential as JSON requests. */
+export async function apiDownloadFile(endpoint: string, destination: string, token: string, signal?: AbortSignal) {
+  if (!token) throw new ApiError('Please sign in again to open this attachment.', 401);
+  if (!endpoint.startsWith('/') || endpoint.startsWith('//') || endpoint.includes('://')) {
+    throw new Error('Invalid attachment address.');
+  }
+  const FS = await import('expo-file-system/legacy');
+  const task = FS.createDownloadResumable(`${API_BASE_URL}${endpoint}`, destination, {
+    headers: { ...apiAuthHeaders(token), Accept: '*/*', 'Cache-Control': 'no-store' },
+  });
+  let cancellation: Promise<void> | undefined;
+  let interrupted: Error | undefined;
+  let interrupt!: (error: Error) => void;
+  const cancelled = new Promise<never>((_, reject) => { interrupt = reject; });
+  const cancel = (message: string) => {
+    if (cancellation) return;
+    interrupted = new Error(message);
+    cancellation = task.cancelAsync().catch(() => {});
+    void cancellation.then(() => interrupt(interrupted!));
+  };
+  const onAbort = () => cancel('Attachment download cancelled.');
+  const timer = setTimeout(() => cancel('Download timed out. Check your connection and try again.'), 90_000);
+  signal?.addEventListener('abort', onAbort);
+  try {
+    if (signal?.aborted) throw new Error('Attachment download cancelled.');
+    const result = await Promise.race([task.downloadAsync(), cancelled]);
+    if (interrupted) throw interrupted;
+    if (!result) throw new Error('Attachment download was interrupted. Please try again.');
+    if (result.status !== 200) {
+      const message = result.status === 401 ? 'Your session has expired. Please sign in again to open this attachment.'
+        : result.status === 403 ? 'You do not have permission to open this attachment.'
+        : result.status === 404 ? 'This attachment is no longer available.'
+        : 'Could not download the attachment. Please try again.';
+      throw new ApiError(message, result.status);
+    }
+    return result;
+  } catch (error) {
+    await cancellation;
+    await FS.deleteAsync(destination, { idempotent: true }).catch(() => {});
+    if (error instanceof ApiError || interrupted || signal?.aborted) throw interrupted || error;
+    // Native errors can contain request details; expose only a safe, useful message.
+    throw new Error('Could not download the attachment. Check your connection and available storage, then try again.');
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 export async function apiRequest<T>(
@@ -36,7 +88,7 @@ export async function apiRequest<T>(
   };
 
   if (token) {
-    headers.Authorization = `Token ${token}`;
+    Object.assign(headers, apiAuthHeaders(token));
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -65,7 +117,7 @@ export async function apiRequest<T>(
       data
     );
 
-    throw new ApiError(data ? extractErrorMessage(data) : `Request failed (HTTP ${response.status}). Please check the server endpoint.`, response.status);
+    throw new ApiError(data ? extractErrorMessage(data) : `Request failed (HTTP ${response.status}). Please check the server endpoint.`, response.status, data);
   }
 
   return data as T;

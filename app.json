@@ -2,7 +2,7 @@
   "expo": {
     "name": "Vaani",
     "slug": "vaani",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "vaani",
@@ -33,7 +33,12 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      ["expo-notifications", { "defaultChannel": "default" }],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "default"
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
@@ -58,9 +63,12 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Your location is recorded at sign-in so administrators can verify where attendance was marked from."
+          "locationAlwaysAndWhenInUsePermission": "Your work location is shared with administrators while you are signed in, including in the background.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

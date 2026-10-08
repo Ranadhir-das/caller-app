@@ -5,11 +5,17 @@ export type CallPayload = {
   client_event_id: string; lead?: number; phone_number?: string;
   started_at: string; ended_at: string; duration_seconds: number;
   outcome: string; notes: string; callback_at?: string;
+  selected_course?: string; selected_course_custom?: string; expected_admission_year?: number;
+  whatsapp_message?: string; whatsapp_template?: number;
+
 };
 export type CallDraft = {
   id: string; userId: number; phone: string; name: string; leadId?: string;
   direct: boolean; startedAt?: string; endedAt?: string; durationSeconds?: number;
   outcome?: string; notes?: string; callbackAt?: string; payload?: CallPayload;
+  selectedCourse?: string; customCourse?: string; admissionYear?: string;
+  whatsappMessage?: string; whatsappTemplate?: number;
+
   recordingPath?: string;
   savedCallId?: number;
   recordingStatus?: 'pending' | 'uploaded';

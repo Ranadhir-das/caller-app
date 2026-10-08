@@ -18,6 +18,8 @@ import {
     TextInput,
     View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareContainer } from "@/components/KeyboardAwareContainer";
 
 export default function SignupScreen() {
   const styles = useAppStyles(createStyles);
@@ -109,11 +111,8 @@ export default function SignupScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <SafeAreaView style={styles.container}>
+      <KeyboardAwareContainer contentContainerStyle={styles.content}>
         <Image
           source={require('@/assets/images/vaani-mark.png')}
           style={styles.logo}
@@ -234,8 +233,8 @@ export default function SignupScreen() {
             <Text style={styles.linkButtonText}>Already have an account? Log in</Text>
           </Pressable>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareContainer>
+    </SafeAreaView>
   );
 }
 

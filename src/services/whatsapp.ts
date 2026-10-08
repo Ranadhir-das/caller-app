@@ -3,6 +3,7 @@ import { apiRequest } from "./api";
 
 export type WhatsAppTemplate = {
   id: number;
+  owner?: number | null;
   title: string;
   message: string;
 };
@@ -98,4 +99,13 @@ export async function launchWhatsAppHandoff(
       error: "WhatsApp is not installed on this device and web browser could not be opened.",
     };
   }
+}
+
+export function saveWhatsAppTemplate(token: string, data: { title: string; message: string }, id?: number) {
+  return apiRequest<WhatsAppTemplate>(`/mobile/whatsapp/templates/${id ? `${id}/` : ''}`, {
+    token, method: id ? 'PATCH' : 'POST', body: data,
+  });
+}
+export function deleteWhatsAppTemplate(token: string, id: number) {
+  return apiRequest<void>(`/mobile/whatsapp/templates/${id}/`, { token, method: 'DELETE' });
 }

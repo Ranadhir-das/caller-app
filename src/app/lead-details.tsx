@@ -1,9 +1,11 @@
+import { courseLabel } from '@/services/courses';
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest, ApiError } from '@/services/api';
 import {
+  Alert,
   Pressable,
   ActivityIndicator,
   ScrollView,
@@ -15,6 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedBackButton } from '@/components/AnimatedBackButton';
 import { WhatsAppModal } from '@/components/WhatsAppModal';
+import { ForwardCounselorModal } from '@/components/ForwardCounselorModal';
+import { counselorApi, COUNSELOR_TEAL, type LeadCounselorState } from '@/services/counselor';
 
 import { useLeads, mapApiLead, type ApiLead } from '@/context/LeadContext';
 import { Lead } from '@/types';
@@ -55,6 +59,19 @@ export default function LeadDetailsScreen() {
     ? (notificationLead?.id === id ? { ...notificationLead, followUpDate: cachedLead?.followUpDate } : null)
     : cachedLead;
 
+  const [showForward, setShowForward] = useState(false);
+  const [counselorState, setCounselorState] = useState<LeadCounselorState | null>(null);
+  const [counselorReload, setCounselorReload] = useState(0);
+  const leadStatus = lead?.status;
+  useEffect(() => {
+    if (!token || !id || leadStatus !== 'interested') { setCounselorState(null); return; }
+    let active = true;
+    counselorApi.leadState(token, id)
+      .then(result => { if (active) setCounselorState(result); })
+      .catch(() => { if (active) setCounselorState(null); });
+    return () => { active = false; };
+  }, [token, id, leadStatus, counselorReload]);
+
   const getStatusLabel = (status: Lead['status']) => {
     switch (status) {
       case 'pending':
@@ -91,6 +108,10 @@ export default function LeadDetailsScreen() {
         return 'Not Reachable';
       case 'ringing':
         return 'Ringing';
+      case 'admission_done_by_other_consultancy':
+        return 'Admission done by other consultancy';
+      case 'b2b':
+        return 'B2B';
 
       default:
         return 'Called';
@@ -260,6 +281,15 @@ export default function LeadDetailsScreen() {
         </Text>
 
         <View style={styles.notesCard}>
+          <Text style={styles.notesText}>Preferred course: {courseLabel(lead.preferredCourse, lead.preferredCourseCustom)}</Text>
+          {lead.interestedDetails && <Text style={styles.notesText}>
+            Interested course: {lead.interestedDetails.course_label || 'Not recorded'}{'\n'}
+            Admission year: {lead.interestedDetails.expected_admission_year || 'Not recorded'}{'\n'}
+            {lead.interestedDetails.course_classification === 'OWN' ? 'Own course' : lead.interestedDetails.course_classification === 'OTHER' ? 'Other course' : 'Preferred course unknown'}
+            {' | '}{lead.interestedDetails.outcome_points || 0} outcome points
+          </Text>}
+        </View>
+        <View style={styles.notesCard}>
           <Text style={styles.notesText}>
             {lead.notes || 'No notes added yet.'}
           </Text>
@@ -357,7 +387,7 @@ export default function LeadDetailsScreen() {
           }}
         >
           <Text style={styles.counsellingButtonIcon}>📋</Text>
-          <Text style={styles.counsellingButtonText}>Walk-in Counselling</Text>
+          <Text style={styles.counsellingButtonText}>Counselling</Text>
           <Text style={styles.counsellingChevron}>›</Text>
         </Pressable>
 
@@ -370,6 +400,28 @@ export default function LeadDetailsScreen() {
           <Text style={styles.whatsAppButtonText}>WhatsApp Student</Text>
           <Text style={styles.whatsAppChevron}>›</Text>
         </Pressable>
+
+        {/* Forward to Counselor (Interested leads with course + year only) */}
+        {counselorState && (counselorState.can_forward || counselorState.assignment) && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={counselorState.assignment ? 'Change Counselor' : 'Forward to Counselor'}
+            style={[styles.counsellingButton, { borderColor: COUNSELOR_TEAL, borderWidth: 1 }]}
+            disabled={!counselorState.can_forward}
+            onPress={() => setShowForward(true)}
+          >
+            <Text style={styles.counsellingButtonIcon}>🎓</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.counsellingButtonText, { color: COUNSELOR_TEAL }]}>
+                {counselorState.assignment ? 'Change Counselor' : 'Forward to Counselor'}
+              </Text>
+              {counselorState.assignment ? (
+                <Text style={styles.notesText}>With {counselorState.assignment.counselor_name}</Text>
+              ) : null}
+            </View>
+            <Text style={styles.counsellingChevron}>›</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <WhatsAppModal
@@ -378,6 +430,14 @@ export default function LeadDetailsScreen() {
         leadId={lead.id}
         leadName={lead.name}
         leadPhone={lead.phone}
+      />
+      <ForwardCounselorModal
+        visible={showForward}
+        leadId={lead.id}
+        leadName={lead.name}
+        currentCounselorId={counselorState?.assignment?.counselor_id ?? null}
+        onForwarded={name => Alert.alert('Forwarded', `Lead forwarded to ${name}.`)}
+        onClose={() => { setShowForward(false); setCounselorReload(value => value + 1); }}
       />
     </SafeAreaView>
   );

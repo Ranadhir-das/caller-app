@@ -7,12 +7,15 @@ import { useAppTheme, useAppStyles } from '@/context/AppThemeContext';
 import { CallerAvatar } from '@/components/CallerAvatar';
 import { useEmployeeWorkspace } from '@/context/EmployeeWorkspaceContext';
 import { makeStyles } from '@/components/employee/shared';
+import { useNotificationUnreadCount } from '@/hooks/useNotificationUnreadCount';
+import { unreadBadge } from '@/services/notificationCenter';
 
 export default function EmployeeHomeScreen() {
   const { user } = useAuth();
   const { colors } = useAppTheme();
   const styles = useAppStyles(makeStyles);
   const { data, refreshing, load, error } = useEmployeeWorkspace();
+  const unread = useNotificationUnreadCount();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -24,6 +27,11 @@ export default function EmployeeHomeScreen() {
         </Pressable>
       <CallerPointsCard />
         <View style={styles.actionsRow}>
+          <Pressable accessibilityRole="button" style={styles.actionCard} onPress={() => router.push('/notifications')}>
+            <View style={styles.actionIcon}><Text style={styles.actionIconText}>🔔</Text></View>
+            <Text style={styles.actionTitle}>Notifications{unread ? ` (${unreadBadge(unread)})` : ''}</Text>
+            <Text style={styles.actionSubtitle}>Team and app updates</Text>
+          </Pressable>
           {user?.role === 'CALLER' && !user.needs_onboarding && (
             <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/direct-dialer')}>
               <View style={styles.actionIcon}><Text style={styles.actionIconText}>⌨️</Text></View>
@@ -32,6 +40,7 @@ export default function EmployeeHomeScreen() {
             </Pressable>
           )}
           {user?.role === 'CALLER' && !user.needs_onboarding && <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.replace('/(tabs)')}><View style={styles.actionIcon}><Text style={styles.actionIconText}>📞</Text></View><Text style={styles.actionTitle}>Calling workspace</Text><Text style={styles.actionSubtitle}>Switch to dialer</Text></Pressable>}
+          {user?.role === 'COUNSELOR' && !user.needs_onboarding && <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.replace('/counselor' as never)}><View style={styles.actionIcon}><Text style={styles.actionIconText}>🎓</Text></View><Text style={styles.actionTitle}>Counselling workspace</Text><Text style={styles.actionSubtitle}>Your forwarded leads</Text></Pressable>}
           <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/chat')}><View style={styles.actionIcon}><Text style={styles.actionIconText}>💬</Text></View><Text style={styles.actionTitle}>Team chat</Text><Text style={styles.actionSubtitle}>Message your team</Text></Pressable>
           <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/notices')}><View style={styles.actionIcon}><Text style={styles.actionIconText}>📣</Text></View><Text style={styles.actionTitle}>Notices</Text><Text style={styles.actionSubtitle}>Company announcements</Text></Pressable>
         </View>

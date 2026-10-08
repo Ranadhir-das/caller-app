@@ -1,3 +1,9 @@
+import { InterestedCourseSteps } from '@/components/InterestedCourseSteps';
+import { OutcomeWhatsAppEditor } from '@/components/OutcomeWhatsAppEditor';
+import { ForwardCounselorModal } from '@/components/ForwardCounselorModal';
+import { canOfferForward } from '@/services/counselor';
+import { courseLabel, allowsContact, completeInterestedSelection } from '@/services/courses';
+import { launchWhatsAppHandoff } from '@/services/whatsapp';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { useDialerSession } from '@/context/DialerSessionContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -8,18 +14,19 @@ import { AnimatedBackButton } from '@/components/AnimatedBackButton';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { CallDraft, CallPayload, newCallId, readCallDraft, saveCallDraft, patchCallDraft, removeCallDraft } from '@/services/callDrafts';
-import { uploadDraftRecording } from '@/services/recordingUploads';
+import { buildOutcomePayload, incompleteInterestedPayload } from '@/services/callOutcome';
 import {
   Alert,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAwareContainer } from '@/components/KeyboardAwareContainer';
+import { NoteInputWithVoice } from '@/components/NoteInputWithVoice';
 
 import { useLeads } from '@/context/LeadContext';
 import { apiRequest, ApiError } from '@/services/api';
@@ -39,6 +46,8 @@ const outcomes = [
   { id: 'all_waiting', label: 'Call Waiting', icon: '\u23F3' },
   { id: 'not_reachable', label: 'Not Reachable', icon: '\uD83D\uDCF5' },
   { id: 'ringing', label: 'Ringing', icon: '\uD83D\uDD14' },
+  { id: 'admission_done_by_other_consultancy', label: 'Admission done by other consultancy', icon: '🏛️' },
+  { id: 'b2b', label: 'B2B', icon: '💼' },
 ];
 
 type BackendOutcome =
@@ -53,7 +62,9 @@ type BackendOutcome =
   | 'DISCONNECTED'
   | 'ALL_WAITING'
   | 'NOT_REACHABLE'
-  | 'RINGING';
+  | 'RINGING'
+  | 'ADMISSION_DONE_BY_OTHER_CONSULTANCY'
+  | 'B2B';
 
 const outcomeToBackend: Record<string, BackendOutcome> = {
   interested: 'INTERESTED',
@@ -68,6 +79,8 @@ const outcomeToBackend: Record<string, BackendOutcome> = {
   all_waiting: 'ALL_WAITING',
   not_reachable: 'NOT_REACHABLE',
   ringing: 'RINGING',
+  admission_done_by_other_consultancy: 'ADMISSION_DONE_BY_OTHER_CONSULTANCY',
+  b2b: 'B2B',
 };
 
 export default function CallOutcomeScreen() {
@@ -107,13 +120,26 @@ export default function CallOutcomeScreen() {
 
   const [selectedOutcome, setSelectedOutcome] = useState('');
   const [notes, setNotes] = useState('');
+  const [selectedCourse, setSelectedCourse] = useState('');
+  const [customCourse, setCustomCourse] = useState('');
+  const [admissionYear, setAdmissionYear] = useState('');
+  const [courseSteps, setCourseSteps] = useState(false);
+  const [whatsappMessage, setWhatsappMessage] = useState('');
+  const [whatsappTemplate, setWhatsappTemplate] = useState<number>();
 
+
+  const isCaller = (user?.role || '').toUpperCase() === 'CALLER';
   const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
+  const [hasSelectedDate, setHasSelectedDate] = useState(false);
+  const [hasSelectedTime, setHasSelectedTime] = useState(false);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [savedCallId, setSavedCallId] = useState<number>();
+  // Optional step after a caller saves Interested: offer "Forward to Counselor".
+  const [forwardLeadId, setForwardLeadId] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -129,9 +155,34 @@ export default function CallOutcomeScreen() {
           await saveCallDraft(saved);
         }
         if (!saved) throw new Error('Call timing information is missing. Return to the dialer.');
+        const needsCourse = !saved.savedCallId && (incompleteInterestedPayload(saved.payload) ||
+          (!saved.payload && saved.outcome === 'interested' && !completeInterestedSelection(
+            saved.selectedCourse || '', saved.customCourse || '', saved.admissionYear || '')));
+        if (needsCourse && saved.payload) {
+          // Keep the same event ID: if an older server accepted this request, it will
+          // return a conflict rather than create a duplicate with changed details.
+          await patchCallDraft(saved.userId, saved.id, { payload: undefined, outcome: 'interested' });
+          saved = { ...saved, payload: undefined, outcome: 'interested' };
+        }
         if (active) {
-          setDraft(saved); setSelectedOutcome(saved.outcome || ''); setNotes(saved.notes || '');
-          setFollowUpDate(saved.callbackAt ? new Date(saved.callbackAt) : null); setLoaded(true);
+          setSavedCallId(saved.savedCallId);
+          setCourseSteps(needsCourse);
+          setDraft(saved); setSelectedOutcome(saved.payload?.outcome.toLowerCase() || saved.outcome || ''); setNotes(saved.payload?.notes ?? saved.notes ?? '');
+          setSelectedCourse(saved.payload?.selected_course || saved.selectedCourse || '');
+          setCustomCourse(saved.payload?.selected_course_custom || saved.customCourse || '');
+          setAdmissionYear(String(saved.payload?.expected_admission_year || saved.admissionYear || ''));
+          setWhatsappMessage(saved.payload?.whatsapp_message || saved.whatsappMessage || '');
+          setWhatsappTemplate(saved.payload?.whatsapp_template || saved.whatsappTemplate);
+          if (saved.payload?.callback_at || saved.callbackAt) {
+            setFollowUpDate(new Date(saved.payload?.callback_at || saved.callbackAt!));
+            setHasSelectedDate(true);
+            setHasSelectedTime(true);
+          } else {
+            setFollowUpDate(null);
+            setHasSelectedDate(false);
+            setHasSelectedTime(false);
+          }
+          setLoaded(true);
         }
       } catch (error) { if (active) setDraftError(String(error)); }
     };
@@ -140,11 +191,16 @@ export default function CallOutcomeScreen() {
   }, [draft_id, user?.id]);
 
   useEffect(() => {
-    if (!loaded || !draft || draft.payload) return;
-    void patchCallDraft(draft.userId, draft.id, {
-      outcome: selectedOutcome, notes, callbackAt: followUpDate?.toISOString(),
-    }).catch(error => { setDraftError('Unable to save edits on this device. Keep this screen open and retry Save.'); console.error(error); });
-  }, [loaded, selectedOutcome, notes, followUpDate, draft?.payload]);
+    if (!loaded || !draft || draft.payload || savedCallId || saving) return;
+    // Coalesce typing; do not queue an AsyncStorage write for every keystroke.
+    const timer = setTimeout(() => {
+      void patchCallDraft(draft.userId, draft.id, {
+        outcome: selectedOutcome, notes, callbackAt: followUpDate?.toISOString(),
+        selectedCourse, customCourse, admissionYear, whatsappMessage, whatsappTemplate,
+      }).catch(error => { setDraftError('Unable to save edits on this device. Keep this screen open and retry Save.'); console.warn(error); });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [loaded, selectedOutcome, notes, followUpDate, selectedCourse, customCourse, admissionYear, whatsappMessage, whatsappTemplate, draft?.payload, savedCallId, saving]);
 
   if (!loaded || !target || !draft) {
     return <SafeAreaView style={styles.container}>
@@ -173,9 +229,14 @@ export default function CallOutcomeScreen() {
 
   const handleOutcomeChange = (outcomeId: string) => {
     setSelectedOutcome(outcomeId);
+    if (outcomeId === 'interested') setCourseSteps(true);
+    else { setSelectedCourse(''); setCustomCourse(''); setAdmissionYear(''); }
+    setWhatsappMessage(''); setWhatsappTemplate(undefined);
 
     if (outcomeId !== 'call_back') {
       setFollowUpDate(null);
+      setHasSelectedDate(false);
+      setHasSelectedTime(false);
       setShowDatePicker(false);
       setShowTimePicker(false);
     }
@@ -202,6 +263,7 @@ export default function CallOutcomeScreen() {
     );
 
     setFollowUpDate(selectedDate);
+    setHasSelectedDate(true);
 
     // After selecting a date, open time picker.
     setShowTimePicker(true);
@@ -227,90 +289,136 @@ export default function CallOutcomeScreen() {
     );
 
     setFollowUpDate(new Date(currentDate));
+    setHasSelectedTime(true);
+  };
+
+  const interestedReady = completeInterestedSelection(selectedCourse, customCourse, admissionYear);
+  const canSave = !!selectedOutcome && !saving && !savedCallId && !courseSteps &&
+    (selectedOutcome !== 'interested' || interestedReady);
+
+  const finish = () => {
+    if (draft.direct) { router.replace('/direct-dialer'); return; }
+    const nextLead = getNextPendingLead(draft.leadId);
+    if (nextLead) router.replace({ pathname: '/dialer', params: { id: nextLead.id } });
+    else router.replace('/(tabs)');
   };
 
   const handleSave = async () => {
-    if (saveLock.current) return;
-    if (!selectedOutcome) { Alert.alert('Select Outcome', 'Please select what happened during the call.'); return; }
-    if (selectedOutcome === 'call_back' && !followUpDate) {
-      Alert.alert('Follow-up Required', 'Please select a follow-up date and time.'); return;
+    if (saveLock.current || savedCallId) return;
+    if (!selectedOutcome) return;
+    if (selectedOutcome === 'interested' && !interestedReady) { setCourseSteps(true); return; }
+
+    // Caller mandatory follow-up check whenever follow-up is available
+    if (isCaller && allowsContact(selectedOutcome)) {
+      if (!followUpDate || !hasSelectedDate) {
+        Alert.alert('Follow-up Date Required', 'Please select a follow-up date for this lead.');
+        return;
+      }
+      if (!hasSelectedTime) {
+        Alert.alert('Follow-up Time Required', 'Please select a follow-up time for this lead.');
+        return;
+      }
     }
+
+    // Call back outcome always requires follow-up date and time
+    if (!isCaller && selectedOutcome === 'call_back' && (!followUpDate || !hasSelectedDate || !hasSelectedTime)) {
+      Alert.alert('Follow-up Required', 'Please select a follow-up date and time.');
+      return;
+    }
+    if (!token) { Alert.alert('Session required', 'Please sign in again. Your draft is kept on this device.'); return; }
     saveLock.current = true;
     setSaving(true);
-    let createdCallId: number | undefined;
+    setDraftError('');
+    let payload: CallPayload;
     try {
-      if (!draft.startedAt || !draft.endedAt || !Number.isFinite(draft.durationSeconds) || draft.durationSeconds! < 0) {
-        throw new Error('Complete call timing is unavailable. This draft is retained for review.');
-      }
-      const payload: CallPayload = draft.payload || {
-        client_event_id: draft.id,
-        phone_number: draft.phone,
-        ...(draft.leadId ? { lead: Number(draft.leadId) } : {}),
-        started_at: draft.startedAt, ended_at: draft.endedAt,
-        duration_seconds: Math.round(draft.durationSeconds!),
-        outcome: outcomeToBackend[selectedOutcome], notes: notes.trim(),
-        ...(selectedOutcome === 'call_back' && followUpDate ? { callback_at: followUpDate.toISOString() } : {}),
-      };
-      // Freeze the first submitted payload: a timeout may mean the server already saved it.
+      payload = buildOutcomePayload(draft, {
+        outcome: outcomeToBackend[selectedOutcome], notes, course: selectedCourse,
+        customCourse, year: admissionYear, callbackAt: followUpDate?.toISOString(),
+        whatsappMessage, whatsappTemplate,
+      });
+      // Persist the exact request before sending. Network retries reuse its event ID.
       await patchCallDraft(draft.userId, draft.id, {
         payload, outcome: selectedOutcome, notes, callbackAt: followUpDate?.toISOString(),
+        selectedCourse, customCourse, admissionYear, whatsappMessage, whatsappTemplate,
       });
       setDraft({ ...draft, payload });
-      if (!token) throw new Error('Please log in again. Your call draft is saved on this device.');
-      const saved = await apiRequest<{
-        id: number; lead: number | null; lead_name: string | null; phone_number: string;
-        followup: { scheduled_at: string; status: string } | null;
-      }>('/calls/', { method: 'POST', body: payload, token });
-      createdCallId = saved.id;
-      await patchCallDraft(draft.userId, draft.id, { savedCallId: saved.id,
-        ...(draft.recordingPath ? { recordingStatus: 'pending', recordingQueuedAt: new Date().toISOString() } : {}),
-      });
-      if (draft.recordingPath) {
-        try { await uploadDraftRecording(draft.userId, draft.id, token); }
-        catch (error) {
-          console.warn('RECORDING_UPLOAD: retained for retry', error);
-          Alert.alert('Call saved; recording pending', 'Your call and follow-up are saved. The recording remains on this device. Retry it from Direct Dialer.');
-        }
-      } else {
-        await removeCallDraft(draft.userId, draft.id);
-      }
-      const mobileStatus = payload.outcome.toLowerCase() as Lead['status'];
-      const newCall: CallHistory = {
-        id: String(saved.id), leadId: saved.lead == null ? '' : String(saved.lead),
-        leadName: saved.lead_name || saved.phone_number || draft.phone,
-        phone: saved.phone_number || draft.phone, isExternal: saved.lead == null,
-        durationSeconds: payload.duration_seconds, outcome: mobileStatus,
-        notes: payload.notes, calledAt: payload.ended_at,
-        followUpDate: saved.followup?.scheduled_at, followUpStatus: saved.followup?.status,
-      };
-      addCallHistory(newCall);
-      // No second status PATCH: the call endpoint owns the lead/outcome transaction.
-      await refresh();
-      if (!draft.direct) recordCall(mobileStatus as Parameters<typeof recordCall>[0]);
-      if (draft.direct) { router.replace('/direct-dialer'); return; }
-      const nextLead = getNextPendingLead(draft.leadId);
-      if (nextLead) router.replace({ pathname: '/dialer', params: { id: nextLead.id } });
-      else router.replace('/(tabs)');
     } catch (error) {
-      console.error('Failed to save call:', error);
-      // A validation rejection did not create a call. Allow correcting its fields.
-      // Timeouts, server errors and conflict responses must retain the original payload.
+      Alert.alert('Draft needs attention', `${error instanceof Error ? error.message : 'Could not preserve this draft.'} No request was sent.`);
+      saveLock.current = false; setSaving(false); return;
+    }
+
+    let saved: {
+      id: number; lead: number | null; lead_name: string | null; phone_number: string;
+      followup: { scheduled_at: string; status: string } | null;
+      selected_course?: string | null; selected_course_custom?: string; expected_admission_year?: number | null;
+      course_classification?: string; outcome_points?: number; whatsapp_message?: string;
+    };
+    try {
+      saved = await apiRequest('/calls/', { method: 'POST', body: payload, token });
+    } catch (error) {
+      // Only a failed API request is reported as an outcome-save failure.
+      // A 400 is a definite rejection; timeouts/conflicts keep the frozen payload.
       if (error instanceof ApiError && error.status === 400) {
-        try {
-          await patchCallDraft(draft.userId, draft.id, { payload: undefined });
-          setDraft({ ...draft, payload: undefined });
-        } catch (storageError) { console.error('Call draft:', storageError); }
+        setDraft({ ...draft, payload: undefined });
+        await patchCallDraft(draft.userId, draft.id, { payload: undefined }).catch(console.warn);
       }
-      Alert.alert(createdCallId ? 'Call saved; local completion failed' : 'Could Not Save Call',
-        `${createdCallId ? `Call #${createdCallId} is already saved in Django. ` : ''}${error instanceof Error ? error.message : 'Please try again.'}\nReopen the saved draft from Direct Dialer to retry safely.`);
-    } finally { saveLock.current = false; setSaving(false); }
+      Alert.alert('Could Not Save Call', `${error instanceof Error ? error.message : 'Please try again.'} Your draft is kept for retry.`);
+      saveLock.current = false; setSaving(false); return;
+    }
+
+    // Success is final immediately after the API responds. Recording never runs here.
+    setSavedCallId(saved.id);
+    setDraft({ ...draft, payload, savedCallId: saved.id });
+    setSaving(false);
+    const mobileStatus = payload.outcome.toLowerCase() as Lead['status'];
+    const newCall: CallHistory = {
+      id: String(saved.id), leadId: saved.lead == null ? '' : String(saved.lead),
+      leadName: saved.lead_name || saved.phone_number || draft.phone,
+      phone: saved.phone_number || draft.phone, isExternal: saved.lead == null,
+      durationSeconds: payload.duration_seconds, outcome: mobileStatus,
+      selectedCourse: saved.selected_course, customCourse: saved.selected_course_custom,
+      admissionYear: saved.expected_admission_year, courseClassification: saved.course_classification,
+      outcomePoints: saved.outcome_points, whatsappMessage: saved.whatsapp_message,
+      notes: payload.notes, calledAt: payload.ended_at,
+      followUpDate: saved.followup?.scheduled_at, followUpStatus: saved.followup?.status,
+    };
+    try {
+      addCallHistory(newCall);
+      if (!draft.direct) recordCall(mobileStatus as Parameters<typeof recordCall>[0]);
+    } catch (error) { console.warn('Outcome saved; local display update pending', error); }
+
+    // Retain existing recording metadata/files for later explicit use. No upload is queued.
+    void patchCallDraft(draft.userId, draft.id, { savedCallId: saved.id })
+      .then(() => draft.recordingPath ? undefined : removeCallDraft(draft.userId, draft.id))
+      .catch(error => console.warn('Outcome saved; local draft cleanup pending', error));
+    void refresh().catch(error => console.warn('Outcome saved; refresh pending', error));
+
+    // Forwarding is an optional extra step; it never alters the saved outcome, course, year or points.
+    const savedLeadId = saved.lead;
+    const proceed = canOfferForward(user, payload.outcome, savedLeadId) && savedLeadId != null
+      ? () => setForwardLeadId(savedLeadId)
+      : finish;
+
+    if (payload.whatsapp_message) {
+      Alert.alert('Outcome saved', 'Open your prepared message in WhatsApp? You must press Send there.', [
+        { text: 'Done', onPress: proceed },
+        { text: 'Open WhatsApp', onPress: () => { void (async () => {
+          try {
+            const handoff = await apiRequest<{ phone: string; message: string }>(`/calls/${saved.id}/whatsapp/initiate/`, { token, method: 'POST', body: {} });
+            const opened = await launchWhatsAppHandoff(handoff.phone, handoff.message);
+            if (!opened.success) Alert.alert('WhatsApp unavailable', opened.error || 'Try again from call history.');
+          } catch (error) { Alert.alert('Outcome saved; WhatsApp unavailable', error instanceof Error ? error.message : 'Try again from call history.'); }
+          finally { proceed(); }
+        })(); } },
+      ], { cancelable: false });
+    } else {
+      Alert.alert('Outcome saved', 'Your call outcome has been saved successfully.', [{ text: 'Continue', onPress: proceed }], { cancelable: false });
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareContainer
         contentContainerStyle={styles.content}
       >
         {/* Header */}
@@ -352,7 +460,7 @@ export default function CallOutcomeScreen() {
 
         {draftError ? <Text style={styles.errorTitle}>{draftError}</Text> : null}
         <Text style={styles.phone}>{draft.leadId ? 'Lead Call' : 'Direct Call'} • {draft.durationSeconds ?? 0}s</Text>
-        {draft.payload ? <Text style={styles.phone}>Submission saved locally. Retry Save with the same details; check history before discarding.</Text> : null}
+        {draft.payload && !savedCallId ? <Text style={styles.phone}>Submission saved locally. Retry Save with the same details; check history before discarding.</Text> : null}
         {/* Outcome */}
         <Text style={styles.sectionTitle}>
           What happened?
@@ -379,7 +487,7 @@ export default function CallOutcomeScreen() {
                     outcome.id
                   )
                 }
-                disabled={saving || !!draft.payload}
+                disabled={saving || !!savedCallId || !!draft.payload}
               >
                 <Text style={styles.outcomeIcon} accessible={false}>{outcome.icon}</Text>
                 <Text
@@ -396,39 +504,75 @@ export default function CallOutcomeScreen() {
           })}
         </View>
 
+        {courseSteps && <InterestedCourseSteps visible course={selectedCourse} custom={customCourse} year={admissionYear}
+          onCancel={() => { setCourseSteps(false); if (!interestedReady) setSelectedOutcome(''); }}
+          onComplete={(course, custom, year) => { setSelectedCourse(course); setCustomCourse(custom); setAdmissionYear(year); setCourseSteps(false); }} />}
+        {selectedOutcome === 'interested' && <View style={styles.followUpCard}>
+          <Text style={styles.sectionTitle}>Interested: {courseLabel(selectedCourse, customCourse)}</Text>
+          <Text style={styles.phone}>Expected admission: {admissionYear || 'Select year'}</Text>
+          <Pressable disabled={saving || !!savedCallId || !!draft.payload} style={styles.dateButton} onPress={() => setCourseSteps(true)}><Text style={styles.dateButtonText}>Edit course and year</Text></Pressable>
+        </View>}
+        {allowsContact(selectedOutcome) && <OutcomeWhatsAppEditor message={whatsappMessage} templateId={whatsappTemplate} disabled={saving || !!savedCallId || !!draft.payload}
+          values={{ student_name: target.name, name: target.name, phone: target.phone, course: selectedCourse ? courseLabel(selectedCourse, customCourse) : '', year: admissionYear, caller_name: user?.username || '' }}
+          onChange={(message, template) => { setWhatsappMessage(message); setWhatsappTemplate(template); }} />}
         {/* Notes */}
         <Text style={styles.sectionTitle}>
           Notes
         </Text>
 
-        <TextInput keyboardAppearance={mode}
-          style={styles.notesInput}
-          placeholder="Add notes about this call..."
-          placeholderTextColor={colors.placeholder}
+        <NoteInputWithVoice
+          placeholder="Add notes about this call (tap mic to speak)..."
           value={notes}
           onChangeText={setNotes}
           multiline
-          textAlignVertical="top"
-          editable={!saving && !draft.payload}
+          numberOfLines={4}
+          editable={!saving && !savedCallId && !draft.payload}
         />
 
         {/* Follow-up */}
-        {selectedOutcome === 'call_back' && (
+        {allowsContact(selectedOutcome) && (
           <View style={styles.followUpCard}>
-            <Text style={styles.followUpTitle}>
-              📅 Follow-up Date & Time
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={styles.followUpTitle}>
+                📅 Follow-up Date & Time {isCaller && <Text style={{ color: colors.danger }}>*</Text>}
+              </Text>
+              {isCaller && (
+                <View style={{ backgroundColor: colors.accentSoft, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Required</Text>
+                </View>
+              )}
+            </View>
+
+            <Text style={styles.phone}>
+              {isCaller
+                ? 'Mandatory for callers — select date and time before saving'
+                : selectedOutcome === 'call_back'
+                ? 'Required for Call Back'
+                : 'Optional - leave empty if no reminder is needed'}
             </Text>
+
+            {followUpDate && selectedOutcome !== 'call_back' && !isCaller && (
+              <Pressable
+                disabled={saving || !!savedCallId || !!draft.payload}
+                style={styles.dateButton}
+                onPress={() => {
+                  setFollowUpDate(null);
+                  setHasSelectedDate(false);
+                  setHasSelectedTime(false);
+                }}
+              >
+                <Text style={styles.dateButtonText}>Remove follow-up</Text>
+              </Pressable>
+            )}
 
             {/* Date */}
             <Pressable
               style={styles.dateButton}
-              onPress={() =>
-                setShowDatePicker(true)
-              }
-              disabled={saving || !!draft.payload}
+              onPress={() => setShowDatePicker(true)}
+              disabled={saving || !!savedCallId || !!draft.payload}
             >
               <Text style={styles.dateButtonText}>
-                {followUpDate
+                {followUpDate && hasSelectedDate
                   ? formatDate(followUpDate)
                   : 'Select follow-up date'}
               </Text>
@@ -445,7 +589,7 @@ export default function CallOutcomeScreen() {
                 styles.timeButton,
               ]}
               onPress={() => {
-                if (!followUpDate) {
+                if (!followUpDate || !hasSelectedDate) {
                   Alert.alert(
                     'Select Date First',
                     'Please select the follow-up date first.'
@@ -455,10 +599,10 @@ export default function CallOutcomeScreen() {
 
                 setShowTimePicker(true);
               }}
-              disabled={saving || !!draft.payload}
+              disabled={saving || !!savedCallId || !!draft.payload}
             >
               <Text style={styles.dateButtonText}>
-                {followUpDate
+                {followUpDate && hasSelectedTime
                   ? formatTime(followUpDate)
                   : 'Select follow-up time'}
               </Text>
@@ -468,7 +612,7 @@ export default function CallOutcomeScreen() {
               </Text>
             </Pressable>
 
-            {followUpDate && (
+            {followUpDate && hasSelectedDate && hasSelectedTime && (
               <Text style={styles.followUpPreview}>
                 Follow-up:
                 {' '}
@@ -511,23 +655,33 @@ export default function CallOutcomeScreen() {
           </View>
         )}
 
+        {selectedOutcome === 'interested' && !interestedReady && <Text style={styles.phone}>Complete Course and Year before saving.</Text>}
+        {!!savedCallId && <View style={styles.leadCard}><Text accessibilityRole="alert" style={styles.sectionTitle}>Outcome saved successfully.</Text></View>}
         {/* Save */}
         <Pressable
           style={[
             styles.saveButton,
-            (!selectedOutcome || saving) &&
+            !canSave &&
               styles.saveButtonDisabled,
           ]}
           onPress={handleSave}
-          disabled={!selectedOutcome || saving}
+          disabled={!canSave}
         >
           <Text style={styles.saveButtonText}>
             {saving
               ? 'Saving...'
-              : 'Save Outcome'}
+              : savedCallId ? 'Outcome Saved' : 'Save Outcome'}
           </Text>
         </Pressable>
-      </ScrollView>
+        {!!savedCallId && <Pressable style={styles.dateButton} onPress={finish}><Text style={styles.dateButtonText}>Continue</Text></Pressable>}
+      </KeyboardAwareContainer>
+      <ForwardCounselorModal
+        visible={forwardLeadId != null}
+        leadId={forwardLeadId}
+        leadName={target.name}
+        onForwarded={name => Alert.alert('Forwarded', `Lead forwarded to ${name}.`)}
+        onClose={() => { setForwardLeadId(null); finish(); }}
+      />
     </SafeAreaView>
   );
 }

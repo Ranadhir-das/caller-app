@@ -1,3 +1,7 @@
+import { courseLabel } from '@/services/courses';
+import { useAuth } from '@/context/AuthContext';
+import { apiRequest } from '@/services/api';
+import { launchWhatsAppHandoff } from '@/services/whatsapp';
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -12,6 +16,7 @@ export default function CallHistoryDetailsScreen() {
   const styles = useAppStyles(createStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const { callHistory } = useLeads();
+  const { token } = useAuth();
 
   const call = callHistory.find((item) => item.id === id);
 
@@ -50,6 +55,10 @@ export default function CallHistoryDetailsScreen() {
         return 'Not Reachable';
       case 'ringing':
         return 'Ringing';
+      case 'admission_done_by_other_consultancy':
+        return 'Admission done by other consultancy';
+      case 'b2b':
+        return 'B2B';
 
       default:
         return 'Called';
@@ -286,6 +295,21 @@ export default function CallHistoryDetailsScreen() {
           </View>
         </View>
 
+        {call.selectedCourse && <View style={styles.notesCard}>
+          <Text style={styles.notesText}>Interested: {courseLabel(call.selectedCourse, call.customCourse)}{'\n'}
+            Admission year: {call.admissionYear || 'Not recorded'}{'\n'}
+            {call.courseClassification === 'OWN' ? 'Own course' : call.courseClassification === 'OTHER' ? 'Other course' : 'Preferred course unknown'}
+            {' | '}{call.outcomePoints || 0} outcome points
+          </Text>
+        </View>}
+        {!!call.whatsappMessage && <Pressable style={styles.notesCard} onPress={() => { void (async () => {
+          try {
+            if (!token) return;
+            const handoff = await apiRequest<{ phone: string; message: string }>(`/calls/${call.id}/whatsapp/initiate/`, { token, method: 'POST', body: {} });
+            const result = await launchWhatsAppHandoff(handoff.phone, handoff.message);
+            if (!result.success) Alert.alert('WhatsApp unavailable', result.error);
+          } catch (e) { Alert.alert('Could not open WhatsApp', e instanceof Error ? e.message : 'Try again.'); }
+        })(); }}><Text style={styles.notesText}>Open prepared WhatsApp message (manual send)</Text></Pressable>}
         {call.notes ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
