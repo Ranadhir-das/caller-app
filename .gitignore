@@ -63,3 +63,7 @@ example
 
 # Local reference images
 *.jpeg
+
+# Local Android/Gradle build caches
+.gradle/
+**/.gradle/
