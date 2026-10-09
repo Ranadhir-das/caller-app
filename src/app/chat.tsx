@@ -22,7 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useAppTheme, useAppStyles, AppColors } from "@/context/AppThemeContext";
 import { AnimatedBackButton } from "@/components/AnimatedBackButton";
-import { useSpeechToText } from "@/services/speech";
+import { useSpeechToText, appendDictatedText } from "@/services/speech";
 import {
   ChatAttachment,
   ChatChannel,
@@ -61,13 +61,7 @@ export default function ChatScreen() {
 
   const speech = useSpeechToText({
     onResult: (spokenText) => {
-      const clean = spokenText.trim();
-      if (!clean) return;
-      setText(current => {
-        if (!current || !current.trim()) return clean;
-        const sep = current.endsWith('\n') || current.endsWith(' ') ? '' : ' ';
-        return `${current}${sep}${clean}`;
-      });
+      setText(current => appendDictatedText(current, spokenText));
     },
   });
 

@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useAppTheme } from '@/context/AppThemeContext';
-import { useSpeechToText } from '@/services/speech';
+import { useSpeechToText, appendDictatedText } from '@/services/speech';
 
 export interface NoteInputWithVoiceProps extends Omit<TextInputProps, 'onChangeText' | 'value'> {
   value: string;
@@ -51,26 +51,31 @@ export function NoteInputWithVoice({
   const [textHeight, setTextHeight] = useState(88);
   const visibleHeight = Math.min(Math.max(88, textHeight), Math.max(64, Math.min(180, availableHeight - 32)));
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [interimText, setInterimText] = useState('');
+
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
   const handleSpeechResult = useCallback(
     (dictatedText: string) => {
       const clean = dictatedText.trim();
       if (!clean) return;
-      if (!value || !value.trim()) {
-        onChangeText(clean);
-      } else {
-        // Append dictated speech to existing content with appropriate spacing
-        const separator = value.endsWith('\n') || value.endsWith(' ') ? '' : ' ';
-        onChangeText(`${value}${separator}${clean}`);
-      }
+      setInterimText('');
+      onChangeText(appendDictatedText(valueRef.current, clean));
     },
-    [value, onChangeText]
+    [onChangeText]
   );
+
+  const handlePartialResult = useCallback((partialText: string) => {
+    setInterimText(partialText.trim());
+  }, []);
 
   const { isListening, toggle, isAvailable } = useSpeechToText({
     onResult: handleSpeechResult,
+    onPartialResult: handlePartialResult,
     language: voiceLanguage,
     onStart: () => {
+      setInterimText('');
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
@@ -87,6 +92,12 @@ export function NoteInputWithVoice({
       ).start();
     },
     onEnd: () => {
+      setInterimText('');
+      pulseAnim.stopAnimation();
+      pulseAnim.setValue(1);
+    },
+    onError: () => {
+      setInterimText('');
       pulseAnim.stopAnimation();
       pulseAnim.setValue(1);
     },
@@ -175,8 +186,10 @@ export function NoteInputWithVoice({
       {isListening && showStatusBanner && (
         <View style={styles.listeningBadge}>
           <View style={styles.recordingDot} />
-          <Text style={[styles.listeningText, { color: '#ef4444' }]}>
-            Listening... Speak now to dictate (tap mic to stop)
+          <Text style={[styles.listeningText, { color: '#ef4444' }]} numberOfLines={1}>
+            {interimText
+              ? `Listening: "${interimText}"`
+              : 'Listening... Speak now to dictate (tap mic to stop)'}
           </Text>
         </View>
       )}

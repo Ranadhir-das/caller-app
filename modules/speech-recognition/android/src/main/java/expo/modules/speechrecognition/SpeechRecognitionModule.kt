@@ -56,8 +56,7 @@ class SpeechRecognitionModule : Module() {
             override fun onBufferReceived(buffer: ByteArray?) {}
 
             override fun onEndOfSpeech() {
-              isListening = false
-              sendEvent("onSpeechEnd", emptyMap<String, Any>())
+              // Audio recording has stopped; waiting for recognizer to compute and deliver onResults/onError
             }
 
             override fun onError(error: Int) {

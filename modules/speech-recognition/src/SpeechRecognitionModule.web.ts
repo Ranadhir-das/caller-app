@@ -30,7 +30,16 @@ class SpeechRecognitionModule extends NativeModule<WebSpeechEvents> {
       this.emit('onSpeechStart');
     };
     this.recognition.onresult = (event: any) => {
-      const text = event.results?.[0]?.[0]?.transcript || '';
+      let finalTranscript = '';
+      if (event.results) {
+        for (let i = event.resultIndex || 0; i < event.results.length; ++i) {
+          const item = event.results[i];
+          if (item && item[0]) {
+            finalTranscript += item[0].transcript;
+          }
+        }
+      }
+      const text = (finalTranscript || event.results?.[0]?.[0]?.transcript || '').trim();
       if (text) this.emit('onSpeechResults', { value: text });
     };
     this.recognition.onerror = (event: any) => {
