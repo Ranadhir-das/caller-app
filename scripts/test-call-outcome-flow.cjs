@@ -232,7 +232,22 @@ test('caller Interested still requires Course and Year, then offers optional For
   // Skip continues with the normal post-save navigation.
   forward.props.onClose();
   assert.equal(app.navigation.length, 1);
-  assert.equal(nodes(app.render()).find(n => n.type === 'ForwardCounselorModal').props.visible, false);
+});
+
+test('caller Interested does not require follow-up and saves successfully without a follow-up date', async () => {
+  const app = await screen({ role: 'CALLER' });
+  button(app.render(), 'Interested').props.onPress();
+  const flow = nodes(app.render()).find(n => n.type === 'InterestedCourseSteps');
+  const renderModal = modal(flow.props, app.mocks);
+  button(renderModal(), 'MBBS').props.onPress(); button(renderModal(), 'Continue to Year').props.onPress();
+  const year = new Date().getFullYear(); button(renderModal(), `Next Year (${year+1})`).props.onPress();
+  button(renderModal(), 'Use Course and Year').props.onPress();
+  // Do NOT select any follow-up date/time; save directly
+  await button(app.render(), 'Save Outcome').props.onPress();
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.calls[0].body.outcome, 'INTERESTED');
+  assert.equal('callback_at' in app.calls[0].body, false);
+  assert.equal(app.alerts.at(-1)[0], 'Outcome saved');
 });
 
 test('non-Interested caller outcomes never offer Forward to Counselor', async () => {

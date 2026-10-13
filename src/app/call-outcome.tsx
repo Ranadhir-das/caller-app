@@ -315,8 +315,8 @@ export default function CallOutcomeScreen() {
     if (!selectedOutcome) return;
     if (selectedOutcome === 'interested' && !interestedReady) { setCourseSteps(true); return; }
 
-    // Caller mandatory follow-up check whenever follow-up is available
-    if (isCaller && allowsContact(selectedOutcome) && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome))) {
+    // Caller mandatory follow-up check whenever follow-up is available (not required for interested leads)
+    if (isCaller && selectedOutcome !== 'interested' && allowsContact(selectedOutcome) && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome))) {
       if (!followUpDate || !hasSelectedDate) {
         Alert.alert('Follow-up Date Required', 'Please select a follow-up date for this lead.');
         return;
@@ -325,6 +325,11 @@ export default function CallOutcomeScreen() {
         Alert.alert('Follow-up Time Required', 'Please select a follow-up time for this lead.');
         return;
       }
+    }
+    // If follow-up date was selected for an interested lead, time is required to complete the reminder
+    if (selectedOutcome === 'interested' && followUpDate && hasSelectedDate && !hasSelectedTime) {
+      Alert.alert('Follow-up Time Required', 'Please select a follow-up time for this lead.');
+      return;
     }
 
     // Call back outcome always requires follow-up date and time
@@ -543,9 +548,9 @@ export default function CallOutcomeScreen() {
           <View style={styles.followUpCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={styles.followUpTitle}>
-                📅 Follow-up Date & Time {isCaller && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && <Text style={{ color: colors.danger }}>*</Text>}
+                📅 Follow-up Date & Time {isCaller && selectedOutcome !== 'interested' && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && <Text style={{ color: colors.danger }}>*</Text>}
               </Text>
-              {isCaller && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && (
+              {isCaller && selectedOutcome !== 'interested' && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && (
                 <View style={{ backgroundColor: colors.accentSoft, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Required</Text>
                 </View>
@@ -553,14 +558,16 @@ export default function CallOutcomeScreen() {
             </View>
 
             <Text style={styles.phone}>
-              {isCaller
+              {selectedOutcome === 'interested'
+                ? 'Optional — select date and time only if a reminder is needed'
+                : isCaller
                 ? 'Mandatory for callers — select date and time before saving'
-                : selectedOutcome === 'call_back'
+                : ['call_back', 'follow_up_required'].includes(selectedOutcome)
                 ? 'Required for Call Back'
                 : 'Optional - leave empty if no reminder is needed'}
             </Text>
 
-            {followUpDate && selectedOutcome !== 'call_back' && !isCaller && (
+            {followUpDate && !['call_back', 'follow_up_required'].includes(selectedOutcome) && (!isCaller || selectedOutcome === 'interested') && (
               <Pressable
                 disabled={saving || !!savedCallId || !!draft.payload}
                 style={styles.dateButton}
