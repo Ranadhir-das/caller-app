@@ -112,6 +112,10 @@ function AppNavigator() {
           <Stack.Screen name="dialer-backup" />
           <Stack.Screen name="admissions" />
           <Stack.Screen name="counselling" />
+          <Stack.Protected guard={user?.can_manage_apostille_leads === true}>
+            <Stack.Screen name="apostille-leads" />
+            <Stack.Screen name="apostille-lead" />
+          </Stack.Protected>
         </Stack.Protected>
         <Stack.Protected guard={user?.role === 'COUNSELOR' && !user.needs_onboarding}>
           <Stack.Screen name="counselor" />

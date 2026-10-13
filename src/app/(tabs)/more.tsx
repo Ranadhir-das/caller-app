@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallerAvatar } from '@/components/CallerAvatar';
+import { canUseApostille } from '@/services/apostille';
 import { useAuth } from '@/context/AuthContext';
 import { useDialerSession } from '@/context/DialerSessionContext';
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
@@ -49,6 +50,10 @@ export default function MoreScreen() {
           {unread > 0 && <Text style={styles.badge}>{unreadBadge(unread)}</Text>}
           <View style={styles.chevron} />
         </Pressable>
+        {canUseApostille(user) && <Pressable accessibilityRole="button" style={styles.card} onPress={() => router.push('/apostille-leads' as never)}>
+          <View style={styles.menuIcon}><Text style={styles.menuLetter}>A</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.name}>Apostille Leads</Text><Text style={styles.subtitle}>Document enquiries, calls and follow-ups</Text></View><View style={styles.chevron} />
+        </Pressable>}
         {([
           ['Counselling', 'Record walk-in or Google Meet counselling', '/counselling'],
           ['Employee workspace', 'Leave, attendance and daily work', '/employee'],

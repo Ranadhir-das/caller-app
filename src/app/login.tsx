@@ -71,7 +71,7 @@ export default function LoginScreen() {
         throw new Error("Unexpected response from server.");
       }
 
-      if (!result.photo_required) {
+      if (result.photo_required === false) {
         // No camera step needed (e.g. admin sign-in) — finish immediately.
         const location = await getCurrentCoords();
         const verified = await completeLogin(result.challenge, undefined, undefined, location, loginRemark.trim() || undefined);
