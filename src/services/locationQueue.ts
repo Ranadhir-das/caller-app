@@ -3,9 +3,10 @@ import type { LocationObject } from 'expo-location';
 export type EmployeeLocationPoint = {
   latitude: number; longitude: number; accuracy: number;
   altitude: number | null; speed: number | null; heading: number | null; recorded_at: string;
+  source?: 'expo-location'; platform?: 'android'; mocked?: boolean | null;
 };
-export type TrackingSession = { session_id: string; started_at: string; expires_at: string; userId: number };
-export type LocationQueue = { session: TrackingSession; enabled: boolean; points: EmployeeLocationPoint[]; lastPoint: EmployeeLocationPoint | null };
+export type TrackingSession = { session_id: string; started_at: string; expires_at: string; userId: number; supports_location_diagnostics?:boolean };
+export type LocationQueue = { session: TrackingSession; enabled: boolean; points: EmployeeLocationPoint[]; lastPoint: EmployeeLocationPoint | null; lastSyncedAt?: string; moving?: boolean };
 export const MAX_QUEUE_POINTS = 5000;
 export const MAX_QUEUE_AGE_MS = 2 * 24 * 60 * 60 * 1000;
 
@@ -21,7 +22,7 @@ export function queueLocations(queue: LocationQueue, locations: LocationObject[]
   for (const location of [...locations].sort((a, b) => a.timestamp - b.timestamp)) {
     const c = location.coords;
     if (![location.timestamp, c.latitude, c.longitude, c.accuracy].every(Number.isFinite)
-      || Math.abs(c.latitude) > 90 || Math.abs(c.longitude) > 180 || c.accuracy! < 0 || c.accuracy! > 150
+      || Math.abs(c.latitude) > 90 || Math.abs(c.longitude) > 180 || c.accuracy! < 0 || c.accuracy! > 100000
       || location.timestamp < Math.max(Date.parse(queue.session.started_at), now - MAX_QUEUE_AGE_MS)
       || location.timestamp >= Date.parse(queue.session.expires_at) || location.timestamp > now + 60000) continue;
     const point: EmployeeLocationPoint = {
@@ -30,18 +31,23 @@ export function queueLocations(queue: LocationQueue, locations: LocationObject[]
       speed: c.speed != null && Number.isFinite(c.speed) && c.speed >= 0 && c.speed <= 500 ? c.speed : null,
       heading: c.heading != null && Number.isFinite(c.heading) && c.heading >= 0 && c.heading <= 360 ? c.heading : null,
       recorded_at: new Date(location.timestamp).toISOString(),
+      source: 'expo-location', platform: 'android', mocked: location.mocked ?? null,
     };
+    if (next.points.some(existing => existing.recorded_at === point.recorded_at)) continue;
+    if (!next.lastPoint) next.moving = (point.speed ?? 0) >= 0.8;
     if (next.lastPoint) {
       const elapsed = location.timestamp - Date.parse(next.lastPoint.recorded_at);
       const distance = distanceMeters(next.lastPoint, point);
       const moving = (point.speed ?? 0) >= 0.8 || distance >= Math.max(15, point.accuracy + next.lastPoint.accuracy);
       const significant = distance >= Math.max(30, point.accuracy + next.lastPoint.accuracy);
-      if (elapsed <= 0 || elapsed < (significant ? 5000 : moving ? 10000 : 60000)) continue;
+      // A delayed native batch is history, not a replacement for the newest fix.
+      if (elapsed === 0 || (elapsed > 0 && elapsed < (significant ? 5000 : moving ? 10000 : 60000))) continue;
+      if (elapsed > 0) next.moving = moving;
     }
     next.points.push(point);
-    next.lastPoint = point;
+    if (!next.lastPoint || location.timestamp > Date.parse(next.lastPoint.recorded_at)) next.lastPoint = point;
   }
-  next.points = next.points.slice(-MAX_QUEUE_POINTS);
+  next.points = next.points.sort((a,b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at)).slice(-MAX_QUEUE_POINTS);
   return next;
 }
 

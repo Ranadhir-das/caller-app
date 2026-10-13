@@ -18,7 +18,7 @@ function setup(options={}) {
   const values = new Map(), tasks = new Map(), running = new Set(), requests = [], starts = [], stops = [];
   let token = 'secret-token', sessionId = 'session-a', offline = false, statusCode = 0;
   let allowed = options.allowed !== false, gps = true;
-  const session = {session_id:sessionId, started_at:new Clock(now-7200000).toISOString(), expires_at:new Clock(now+14400000).toISOString()};
+  const session = {supports_location_diagnostics:!options.legacy, session_id:sessionId, started_at:new Clock(now-7200000).toISOString(), expires_at:new Clock(now+14400000).toISOString()};
   const storage = {getItem:async key => values.get(key)||null, setItem:async(key,value) => values.set(key,value), removeItem:async key => values.delete(key)};
   const location = {
     Accuracy:{High:4,Balanced:3},
@@ -47,6 +47,7 @@ function setup(options={}) {
   const rn = {Platform:{OS:'android'}, AppState:{currentState:'active'}, Alert:{alert:(_,__,buttons)=>buttons[options.decline?0:1].onPress()}};
   const service = compile('services/employeeLocation.ts', {
     '@react-native-async-storage/async-storage':storage, 'expo-location':location,
+    'expo-battery':{getPowerStateAsync:async()=>({lowPowerMode:!!options.lowPower,batteryLevel:options.batteryLevel??0.8})},
     'react-native':rn, './api':api, './auth':{getStoredToken:async()=>token,getStoredSessionId:async()=>sessionId},
     './locationQueue':queue, 'expo-task-manager': options.missingNative ? null : taskManager,
   }, {Date:Clock});
@@ -55,6 +56,7 @@ function setup(options={}) {
     advance:ms=>now+=ms, offline:value=>offline=value, permission:value=>allowed=value, gps:value=>gps=value,
     authStatus:value=>statusCode=value, changeSession:()=>{sessionId='session-b'; session.session_id=sessionId; session.started_at=new Clock(now-1000).toISOString(); session.expires_at=new Clock(now+14400000).toISOString();},
     queueState:()=>JSON.parse(values.get('vaani_employee_location_queue_v1')||'null'),
+    appState:rn.AppState,
     background:async points=>tasks.get(service.MOVING_LOCATION_TASK)({data:{locations:points},error:null}),
   };
 }
@@ -65,7 +67,7 @@ test('global task registration, authenticated start and supported native options
   assert.equal(app.running.size,2);
   const moving=app.starts.find(s=>s.name===app.MOVING_LOCATION_TASK).settings;
   const stationary=app.starts.find(s=>s.name===app.STATIONARY_LOCATION_TASK).settings;
-  assert.equal(moving.timeInterval,10000); assert.equal(moving.distanceInterval,15);
+  assert.equal(moving.timeInterval,60000); assert.equal(moving.distanceInterval,0); assert.equal(moving.accuracy,3);
   assert.match(moving.foregroundService.notificationBody,/administrators/);
   assert.equal(stationary.timeInterval,60000);
   assert.equal(app.queueState().session.userId,7);
@@ -80,7 +82,8 @@ test('permission denial shows only unavailable and never starts collection', asy
   app.subscribeLocationStatus(value=>statuses.push(value)); await app.startEmployeeLocation(7);
   assert.equal(app.running.size,0); assert.equal(statuses.at(-1),'unavailable');
   const component=fs.readFileSync(`${__dirname}/../src/components/EmployeeLocationRegistration.tsx`,'utf8');
-  assert.match(component,/>Please enable location\.<\/Text>/);
+  assert.match(component,/Location permission required/);
+  assert.equal(app.requests.at(-1).body.reason,'PERMISSION_DENIED');
 });
 test('GPS disabled does not masquerade as network failure', async()=>{
   const app=setup(); await app.startEmployeeLocation(7); app.gps(false);
@@ -127,9 +130,9 @@ test('logout stops, flushes before closing and clears private queue', async()=>{
   assert.equal(app.running.size,0); assert.equal(app.queueState(),null);
   assert.equal(app.requests.at(-1).body.state,'STOPPED');
 });
-test('offline logout also stops and clears queue', async()=>{
+test('offline logout stops capture and retains disabled history for reauthentication', async()=>{
   const app=setup(); await app.startEmployeeLocation(7); app.offline(true); await app.background([app.point()]);
-  await app.stopEmployeeLocation(); assert.equal(app.running.size,0); assert.equal(app.queueState(),null);
+  await app.stopEmployeeLocation(); assert.equal(app.running.size,0); assert.equal(app.queueState().enabled,false); assert.equal(app.queueState().points.length,1);
 });
 test('session expiry stops native tracking without an internet request', async()=>{
   const app=setup(); await app.startEmployeeLocation(7); app.advance(5*3600000);
@@ -148,12 +151,12 @@ test('new authenticated session cannot submit another session queue', async()=>{
 test('missing native task manager tolerates an older installed development build',async()=>{
   const app=setup({missingNative:true}); await app.startEmployeeLocation(7); assert.equal(app.running.size,0);
 });
-test('invalid, inaccurate, old and future positions are excluded before queuing',async()=>{
+test('invalid times and coordinates are excluded while poor accuracy raw samples are retained',async()=>{
   const app=setup(); await app.startEmployeeLocation(7); app.offline(true);
   const invalid=app.point(); invalid.coords.latitude=91;
   const inaccurate=app.point(); inaccurate.coords.accuracy=999;
   await app.background([invalid,inaccurate,app.point({timestamp:0}),app.point({timestamp:Date.now()+999999999})]);
-  assert.equal(app.queueState().points.length,0);
+  assert.equal(app.queueState().points.length,1); assert.equal(app.queueState().points[0].accuracy,999);
 });
 test('queue length is bounded and only acknowledged timestamps are removed',()=>{
   const app=setup(); const now=Date.parse('2026-10-08T08:00:00Z');
@@ -218,4 +221,60 @@ test('existing logout invokes tracking stop before API and clears credentials ev
   });
   await auth.logout();
   assert.deepEqual(events.slice(0,2),['stop','logout']); assert.equal(storage.size,0);
+});
+
+
+test('delayed native batches keep capture timestamps without regressing latest fix',async()=>{
+  const app=setup(); await app.startEmployeeLocation(7); app.offline(true);
+  const latest=app.point(); await app.background([latest]);
+  const old=app.point({timestamp:latest.timestamp-120000}); await app.background([old]);
+  assert.equal(app.queueState().points.length,2);
+  assert.equal(app.queueState().points[0].recorded_at,new Date(old.timestamp).toISOString());
+  assert.equal(app.queueState().lastPoint.recorded_at,new Date(latest.timestamp).toISOString());
+  await app.background([old]); assert.equal(app.queueState().points.length,2);
+});
+test('foreground power adapts to movement and never restarts service from background',async()=>{
+  const app=setup(); await app.startEmployeeLocation(7); await app.background([app.point()]);
+  app.advance(60000); const moving=app.point();moving.coords.latitude+=0.001;moving.coords.speed=4;
+  await app.background([moving]);
+  assert.equal(app.starts.at(-2).settings.accuracy,4);
+  app.appState.currentState='background'; const count=app.starts.length;
+  app.advance(60000); moving.timestamp+=60000; moving.coords.speed=0;
+  await app.background([moving]); assert.equal(app.starts.length,count);
+});
+test('diagnostics distinguish network retry from GPS and retain last successful sync',async()=>{
+  const app=setup(),states=[];app.subscribeLocationDiagnostics(value=>states.push(value));
+  await app.startEmployeeLocation(7);await app.background([app.point()]);
+  assert.equal(states.at(-1).sync,'synced'); const synced=states.at(-1).lastSyncedAt;
+  app.advance(60000);app.offline(true);await app.background([app.point()]);
+  assert.equal(states.at(-1).sync,'offline');assert.equal(states.at(-1).lastSyncedAt,synced);
+  app.gps(false);await app.maintainEmployeeLocation();assert.equal(states.at(-1).reason,'GPS_UNAVAILABLE');
+});
+test('failed logout history replays after same employee login, never after another employee login',async()=>{
+  const app=setup();await app.startEmployeeLocation(7);app.offline(true);await app.background([app.point()]);
+  const timestamp=app.queueState().points[0].recorded_at;await app.stopEmployeeLocation();
+  app.changeSession();app.offline(false);await app.startEmployeeLocation(7);
+  const upload=app.requests.filter(r=>r.endpoint==='/mobile/location/').at(-1);
+  assert.equal(upload.body.session_id,'session-a'); assert.equal(upload.body.points[0].recorded_at,timestamp);
+});
+test('foreground maintenance retries startup after the initial metadata request failed',async()=>{
+  const app=setup();app.offline(true);await app.startEmployeeLocation(7);assert.equal(app.running.size,0);
+  app.offline(false);await app.maintainEmployeeLocation(7);assert.equal(app.running.size,2);
+});
+
+test('low battery and system power saver use balanced native requests without blocking capture',async()=>{
+  for(const options of [{lowPower:true},{batteryLevel:0.1}]) {
+    const app=setup(options), states=[];app.subscribeLocationDiagnostics(value=>states.push(value));
+    await app.startEmployeeLocation(7);const point=app.point();point.coords.speed=4;
+    await app.background([point]);assert.equal(app.starts.at(-2).settings.accuracy,3);
+    assert.equal(app.starts.at(-2).settings.timeInterval,60000);assert.equal(states.at(-1).lowPower,true);
+    assert.equal(app.requests.filter(r=>r.endpoint==='/mobile/location/').length,1);
+  }
+});
+
+test('older backend capability response keeps original ingestion and status payloads compatible',async()=>{
+  const app=setup({legacy:true});await app.startEmployeeLocation(7);await app.background([app.point()]);
+  const point=app.requests.filter(r=>r.endpoint==='/mobile/location/').at(-1).body.points[0];
+  assert.equal(point.source,undefined);assert.equal(point.mocked,undefined);
+  assert.equal(app.requests.find(r=>r.endpoint.endsWith('/status/')&&r.body).body.reason,undefined);
 });
