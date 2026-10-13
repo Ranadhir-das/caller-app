@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
@@ -24,6 +24,7 @@ export function ForwardCounselorModal({ visible, leadId, leadName, currentCounse
   const [selected, setSelected] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -35,10 +36,14 @@ export function ForwardCounselorModal({ visible, leadId, leadName, currentCounse
       .catch(err => { if (active) setError(err instanceof Error ? err.message : 'Could not load counselors.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [visible, token]);
+  }, [visible, token, leadId]);
 
   const forward = async () => {
-    if (!token || leadId == null || selected == null || submitting) return;
+    if (submitLock.current) return;
+    if (!token || leadId == null || selected == null) {
+      setError('Select a saved lead and counselor before forwarding.'); return;
+    }
+    submitLock.current = true;
     setSubmitting(true); setError('');
     try {
       const result = await counselorApi.forward(token, leadId, selected);
@@ -46,7 +51,7 @@ export function ForwardCounselorModal({ visible, leadId, leadName, currentCounse
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not forward this lead.');
-    } finally { setSubmitting(false); }
+    } finally { submitLock.current = false; setSubmitting(false); }
   };
 
   const toneColor = (option: CounselorOption) => {
@@ -55,7 +60,7 @@ export function ForwardCounselorModal({ visible, leadId, leadName, currentCounse
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!submitLock.current) onClose(); }}>
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <Text style={styles.title}>Forward to Counselor</Text>
@@ -71,6 +76,7 @@ export function ForwardCounselorModal({ visible, leadId, leadName, currentCounse
                 return (
                   <Pressable key={option.id} accessibilityRole="radio" accessibilityState={{ selected: isSelected }}
                     accessibilityLabel={`${option.name}, ${option.availability_label}`}
+                    disabled={submitting}
                     onPress={() => setSelected(option.id)}
                     style={({ pressed }) => [styles.row, isSelected && styles.rowSelected, pressed && { opacity: 0.8 }]}>
                     <View style={styles.avatar}><Text style={styles.avatarText}>{option.initials}</Text></View>

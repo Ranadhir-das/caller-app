@@ -15,11 +15,14 @@ export type LeadStatus =
   | 'not_reachable'
   | 'ringing'
   | 'admission_done_by_other_consultancy'
-  | 'b2b';
+  | 'b2b'
+  | 'converted'
+  | 'follow_up_required';
 
 export type InterestedDetails = { selected_course?: string | null; selected_course_custom?: string;
   course_label?: string; expected_admission_year?: number | null; course_classification?: string; outcome_points?: number };
 export type Lead = {
+  serviceCode?: string;
   preferredCourse?: string | null; preferredCourseCustom?: string; interestedDetails?: InterestedDetails | null;
   batchId?: number | null;
   batchName?: string;

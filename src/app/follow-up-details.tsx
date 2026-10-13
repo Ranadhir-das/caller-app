@@ -1,3 +1,6 @@
+import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { loadFollowUps, type DashboardFollowUp } from '@/services/followUps';
 import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { router, useLocalSearchParams } from 'expo-router';
 
@@ -16,18 +19,31 @@ import { useLeads } from '@/context/LeadContext';
 
 export default function FollowUpDetailsScreen() {
   const styles = useAppStyles(createStyles);
-  const { id } = useLocalSearchParams<{
+  const { id, followup_id } = useLocalSearchParams<{
     id: string;
+    followup_id?: string;
   }>();
 
-  const {
-    leads,
-    updateLead,
-  } = useLeads();
-
-  const lead = leads.find(
-    (item) => item.id === id
-  );
+  const { token } = useAuth();
+  const { dashboardFollowUps, completeFollowUp } = useLeads();
+  const [record, setRecord] = useState<DashboardFollowUp | undefined>(() =>
+    dashboardFollowUps.find(item => followup_id ? String(item.id) === followup_id : String(item.lead) === id));
+  const [loading, setLoading] = useState(!record);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
+  useEffect(() => {
+    let active = true;
+    if (token) void loadFollowUps(token).then(items => {
+      if (active) setRecord(items.find(item => followup_id ? String(item.id) === followup_id : String(item.lead) === id));
+    }).catch(() => { if (active) setError('Could not load this follow-up. Please try again.'); })
+      .finally(() => { if (active) setLoading(false); });
+    else setLoading(false);
+    return () => { active = false; };
+  }, [token, id, followup_id]);
+  const lead = record ? { id: record.lead == null ? '' : String(record.lead),
+    name: record.lead_name || record.phone_number, phone: record.lead_phone || record.phone_number,
+    followUpDate: record.scheduled_at, notes: record.notes } : null;
 
   if (!lead) {
     return (
@@ -36,7 +52,7 @@ export default function FollowUpDetailsScreen() {
           <Text style={styles.errorIcon}>⚠️</Text>
 
           <Text style={styles.errorTitle}>
-            Student not found
+            {loading ? 'Loading follow-up...' : error || 'Pending follow-up not found'}
           </Text>
 
           <Pressable
@@ -64,10 +80,8 @@ export default function FollowUpDetailsScreen() {
 
   const handleCall = () => {
     router.push({
-      pathname: '/dialer',
-      params: {
-        id: lead.id,
-      },
+      pathname: lead.id ? '/dialer' : '/direct-dialer',
+      params: lead.id ? { id: lead.id } : { phone_number: lead.phone },
     });
   };
 
@@ -82,24 +96,16 @@ export default function FollowUpDetailsScreen() {
         },
         {
           text: 'Complete',
-          onPress: () => {
-            updateLead(lead.id, {
-              status: 'called',
-              notes: lead.notes,
-              followUpDate: undefined,
-            });
-
-            Alert.alert(
-              'Follow-up Completed',
-              `${lead.name}'s follow-up has been completed.`,
-              [
-                {
-                  text: 'OK',
-                  onPress: () =>
-                    router.replace('/(tabs)'),
-                },
-              ]
-            );
+          onPress: async () => {
+            if (!record || saveLock.current) return;
+            saveLock.current = true; setSaving(true);
+            try {
+              await completeFollowUp(record.id);
+              Alert.alert('Follow-up Completed', `${lead.name}'s follow-up has been completed.`,
+                [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]);
+            } catch (error) {
+              Alert.alert('Could not complete follow-up', error instanceof Error ? error.message : 'Please try again.');
+            } finally { saveLock.current = false; setSaving(false); }
           },
         },
       ]
@@ -213,6 +219,7 @@ export default function FollowUpDetailsScreen() {
 
           <Pressable
             style={styles.completeButton}
+            disabled={saving || loading}
             onPress={handleComplete}
           >
             <Text
@@ -220,7 +227,7 @@ export default function FollowUpDetailsScreen() {
                 styles.completeButtonText
               }
             >
-              ✓ Mark Follow-up Complete
+              {saving ? 'Saving...' : '\u2713 Mark Follow-up Complete'}
             </Text>
           </Pressable>
         </View>

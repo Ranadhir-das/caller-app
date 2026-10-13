@@ -47,6 +47,7 @@ function ActiveDialer() {
     phone_number?: string;
     name?: string;
     isClaimed?: string;
+    service_code?: string;
   }>();
 
   // --------------------------------------------------
@@ -856,6 +857,7 @@ function ActiveDialer() {
       await saveCallDraft({
         id: draftIdRef.current, userId: user.id, phone: currentLead.phone,
         name: currentLead.name, leadId: currentLead.id || undefined, direct,
+        serviceCode: params.service_code || ('serviceCode' in currentLead ? currentLead.serviceCode : undefined),
       });
       if (!mountedRef.current) return;
       // Retry monitoring after the first permission grant.

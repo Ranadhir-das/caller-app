@@ -10,6 +10,7 @@ export function getStatusLabel(
     case 'called':
       return 'Called';
 
+    case 'converted': return 'Converted';
     case 'interested':
       return 'Interested';
 
@@ -22,6 +23,7 @@ export function getStatusLabel(
     case 'busy':
       return 'Busy';
 
+    case 'follow_up_required': return 'Follow-up Required';
     case 'call_back':
       return 'Call Back';
 
@@ -68,11 +70,12 @@ export function getStatusColor(
       not_reachable: '#B4BED0',
       ringing: '#B4BED0',
       admission_done_by_other_consultancy: '#B4BED0',
-      b2b: '#93C5FD',
+      b2b: '#93C5FD', converted: '#78DBB9', follow_up_required: '#BEAEFF',
     };
     return colors[status];
   }
   switch (status) {
+    case 'converted':
     case 'interested':
       return '#16A34A';
 
@@ -85,6 +88,7 @@ export function getStatusColor(
     case 'busy':
       return '#7C3AED';
 
+    case 'follow_up_required':
     case 'call_back':
       return '#2563EB';
 

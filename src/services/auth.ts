@@ -10,6 +10,7 @@ export type LoggedInUser = {
   name: string;
   role: string;
   needs_onboarding?: boolean;
+  can_manage_apostille_leads?: boolean;
 };
 
 const SESSION_KEY = "caller_session_id";

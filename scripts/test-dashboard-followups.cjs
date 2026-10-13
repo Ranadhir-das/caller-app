@@ -18,9 +18,9 @@ function text(tree) {
   return typeof tree === 'object' ? text(tree.props?.children) : String(tree);
 }
 test('Interested and external due follow-ups reach Home even with empty call history; next page is included', async () => {
-  let cursor = 0; const slots = [], effects = [], requests = [];
+  let cursor = 0; let holdLeads = null; let rejectCompletion = false; const completed = new Set(); const slots = [], effects = [], requests = [];
   const react = {
-    createContext: () => ({ Provider: 'Provider' }), useMemo: fn => fn(),
+    createContext: () => ({ Provider: 'Provider' }), useMemo: fn => fn(), useCallback: fn => fn,
     useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial;
       return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value; }]; },
     useRef(initial) { const i = cursor++; return slots[i] || (slots[i] = { current: initial }); },
@@ -31,7 +31,13 @@ test('Interested and external due follow-ups reach Home even with empty call his
   const pending = { id: 11, lead: 7, lead_name: lead.name, lead_phone: lead.phone, caller: 1, status: 'PENDING', scheduled_at: new Date(now.getTime() - 3600000).toISOString() };
   const api = { API_BASE_URL: 'https://crm.example/api/v1', apiRequest: async (url, options) => {
     requests.push(url); assert.equal(options.token, 'session');
-    if (url === '/mobile/leads/') return [lead];
+    if (url === '/followups/11/update/') {
+      if (rejectCompletion) throw new Error('Network failed');
+      assert.equal(options.method, 'PATCH'); assert.equal(options.body.status, 'COMPLETED');
+      completed.add(11); return { status: 'COMPLETED' };
+    }
+    if (url === '/mobile/leads/') { if (holdLeads) await holdLeads; return [lead]; }
+    if (url === '/mobile/follow-ups/?due=true') return [pending, { ...pending, id: 13, lead: null, lead_name: null, lead_phone: null, phone_number: '9876500003' }].filter(item => !completed.has(item.id));
     if (url === '/mobile/follow-ups/') return { results: [pending], next: '?page=2' };
     if (url === '/mobile/follow-ups/?page=2') return { results: [{ ...pending, id: 12, lead: null, lead_name: null, lead_phone: null, phone_number: '9876500001', scheduled_at: tomorrow.toISOString() }], next: null };
     return [];
@@ -52,8 +58,8 @@ test('Interested and external due follow-ups reach Home even with empty call his
   assert.equal(value.leads[0].followUpDate, pending.scheduled_at);
   assert.equal(value.getOverdueFollowUps().length + value.getUpcomingFollowUps().length, 1);
   const home = compile('src/app/(tabs)/index.tsx', {
-    react: { useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}], useEffect() {} },
-    'react/jsx-runtime': jsx, 'react-native': native, 'expo-router': { router: {} },
+    react: { useCallback: fn => fn, useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}], useEffect() {} },
+    'react/jsx-runtime': jsx, 'react-native': native, 'expo-router': { router: {}, useFocusEffect() {} },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '@/services/followUps': service,
     '@/utils/status': { getStatusLabel: value => value }, '@/components/CallerPointsCard': { CallerPointsCard: 'CallerPointsCard' },
     '@/components/CallerAvatar': { CallerAvatar: 'CallerAvatar' }, '@/components/LeadPieChart': { LeadPieChart: 'LeadPieChart' },
@@ -63,8 +69,24 @@ test('Interested and external due follow-ups reach Home even with empty call his
   }).default;
   const rendered = text(home());
   assert.ok(rendered.includes('Interested due student'));
-  assert.ok(rendered.includes('9876500001'));
+  assert.ok(!rendered.includes('9876500001'));
+  assert.ok(rendered.includes('9876500003'));
   assert.ok(rendered.includes('Overdue'));
-  assert.ok(rendered.includes('Upcoming'));
+  assert.ok(!rendered.includes('Upcoming'));
+  assert.ok(requests.includes('/mobile/follow-ups/?due=true'));
   assert.ok(requests.includes('/mobile/follow-ups/?page=2'));
+  rejectCompletion = true;
+  await assert.rejects(value.completeFollowUp(11), /Network failed/);
+  cursor = 0; assert.equal(provider({ children: null }).props.value.dashboardFollowUps.length, 2);
+  rejectCompletion = false;
+  let release;
+  holdLeads = new Promise(resolve => { release = resolve; });
+  const refreshing = value.refresh();
+  // Completing while an older load is running removes immediately and queues a fresh load.
+  await value.completeFollowUp(11);
+  cursor = 0; assert.equal(provider({ children: null }).props.value.dashboardFollowUps.length, 1);
+  holdLeads = null; release(); await refreshing;
+  cursor = 0; assert.equal(provider({ children: null }).props.value.dashboardFollowUps.length, 1);
+  assert.equal(requests.filter(url => url === '/mobile/follow-ups/?due=true').length, 3);
+
 });

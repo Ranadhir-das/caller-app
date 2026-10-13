@@ -1,9 +1,9 @@
-import { followUpCategory } from '@/services/followUps';
+import { followUpCategory, isDueFollowUp } from '@/services/followUps';
 import { getStatusLabel } from '@/utils/status';
 import { CallerPointsCard } from '@/components/CallerPointsCard';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, AppState, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -25,7 +25,7 @@ export default function HomeScreen() {
   const { colors } = useAppTheme();
   const { user } = useAuth();
   const displayName = user?.name?.trim() || user?.username || 'Caller';
-  const [, setClock] = useState(Date.now);
+  const [clock, setClock] = useState(Date.now);
   const [greeting, setGreeting] = useState(getGreeting);
 
   useEffect(() => {
@@ -40,7 +40,12 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const { leads, callHistory, dashboardFollowUps } = useLeads();
+  const { leads, callHistory, dashboardFollowUps, refresh } = useLeads();
+  useFocusEffect(useCallback(() => {
+    void refresh();
+    const timer = setInterval(() => { if (AppState.currentState === 'active') void refresh(); }, 60_000);
+    return () => clearInterval(timer);
+  }, [refresh]));
   const recentActivity = callHistory
     .slice()
     .sort(
@@ -51,7 +56,7 @@ export default function HomeScreen() {
     .slice(0, 5);
 
   const { session, startSession } = useDialerSession();
-  const allFollowUps = dashboardFollowUps.map(item => ({
+  const allFollowUps = dashboardFollowUps.filter(item => isDueFollowUp(item, clock)).map(item => ({
     id: String(item.id), leadId: item.lead == null ? null : String(item.lead),
     name: item.lead_name || leads.find(lead => lead.id === String(item.lead))?.name || item.phone_number || 'Follow-up',
     phone: item.lead_phone || leads.find(lead => lead.id === String(item.lead))?.phone || item.phone_number,
@@ -318,11 +323,7 @@ export default function HomeScreen() {
                   key={lead.id}
                   style={styles.followUpCard}
                   onPress={() => {
-                    if (lead.leadId && leads.some(item => item.id === lead.leadId)) {
-                      router.push({ pathname: '/follow-up-details', params: { id: lead.leadId } });
-                    } else {
-                      Alert.alert(lead.name, `${lead.phone}\n${new Date(lead.followUpDate).toLocaleString()}\n${lead.notes || ''}`);
-                    }
+                    router.push({ pathname: '/follow-up-details', params: { id: lead.leadId || '', followup_id: lead.id } });
                   }}
                 >
                   <View

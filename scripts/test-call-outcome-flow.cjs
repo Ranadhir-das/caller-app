@@ -76,7 +76,7 @@ async function screen(options = {}) {
     '@/context/AuthContext': { useAuth: () => ({ user: { id: 1, username: 'Caller', role: options.role }, token: 'session' }) },
     '@/context/DialerSessionContext': { useDialerSession: () => ({ recordCall() {} }) },
     '@/context/LeadContext': { useLeads: () => ({ leads: [], refresh: options.refresh || (() => Promise.resolve()),
-      addCallHistory: value => history.push(value), getNextPendingLead: () => undefined }) },
+      removeResolvedFollowUps() {}, addCallHistory: value => history.push(value), getNextPendingLead: () => undefined }) },
     'expo-router': { useLocalSearchParams: () => ({ draft_id: base.id }), router: { replace: value => navigation.push(value) } },
     '@react-native-community/datetimepicker': { __esModule: true, default: 'DateTimePicker' },
     '@/services/whatsapp': { launchWhatsAppHandoff: async () => ({ success: true }) },
@@ -243,4 +243,46 @@ test('non-Interested caller outcomes never offer Forward to Counselor', async ()
   buttons.find(b => b.text === 'Continue').onPress();
   assert.equal(app.navigation.length, 1);
   assert.equal(nodes(app.render()).find(n => n.type === 'ForwardCounselorModal').props.visible, false);
+});
+
+for (const [label, outcome] of [['Interested', 'INTERESTED'], ['Converted', 'CONVERTED'], ['No Answer', 'NO_ANSWER']]) {
+  test(`Apostille ${label} uses shared save without an academic course`, async () => {
+    const app = await screen({ role: 'CALLER', draft: { serviceCode: 'APOSTILLE' } });
+    button(app.render(), label).props.onPress();
+    assert.equal(nodes(app.render()).some(n => n.type === 'InterestedCourseSteps'), false);
+    await button(app.render(), 'Save Outcome').props.onPress();
+    assert.equal(app.calls.length, 1);
+    assert.equal(app.calls[0].body.outcome, outcome);
+    assert.equal('selected_course' in app.calls[0].body, false);
+    assert.equal('conversion' in app.calls[0].body, false);
+    assert.equal(app.alerts.at(-1)[0], 'Outcome saved');
+  });
+}
+
+test('Apostille Follow-up Required requires date/time and reuses callback_at', async () => {
+  const app = await screen({ role: 'CALLER', draft: { serviceCode: 'APOSTILLE' } });
+  button(app.render(), 'Follow-up Required').props.onPress();
+  await button(app.render(), 'Save Outcome').props.onPress();
+  assert.equal(app.calls.length, 0);
+  button(app.render(), 'Select follow-up date').props.onPress();
+  nodes(app.render()).find(n => n.type === 'DateTimePicker').props.onChange({ type: 'set' }, new Date('2027-10-07T12:00:00Z'));
+  nodes(app.render()).find(n => n.type === 'DateTimePicker').props.onChange({ type: 'set' }, new Date('2027-10-07T12:30:00Z'));
+  await button(app.render(), 'Save Outcome').props.onPress();
+  assert.equal(app.calls[0].body.outcome, 'FOLLOW_UP_REQUIRED');
+  assert.ok(app.calls[0].body.callback_at);
+});
+
+test('Direct external Interested uses the returned CRM lead for history and counselor forwarding', async () => {
+  const app = await screen({ role: 'CALLER', draft: { direct: true, leadId: undefined },
+    request: async () => ({ id: 22, lead: 91, lead_name: base.phone, phone_number: base.phone,
+      selected_course: 'MBBS', course_classification: 'OWN', outcome_points: 15, followup: null }) });
+  await callerInterestedSave(app);
+  assert.equal(app.calls[0].body.phone_number, base.phone);
+  assert.equal(app.calls[0].body.lead, undefined);
+  assert.equal(app.history[0].leadId, '91');
+  assert.equal(app.history[0].outcomePoints, 15);
+  app.alerts.at(-1)[2].find(b => b.text === 'Continue').onPress();
+  const modal = nodes(app.render()).find(n => n.type === 'ForwardCounselorModal');
+  assert.equal(modal.props.leadId, 91);
+  assert.equal(modal.props.visible, true);
 });

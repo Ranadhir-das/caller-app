@@ -36,3 +36,17 @@ test('timezone offsets represent instants; overdue, today and upcoming remain di
   assert.equal(followUpCategory(new Date(2026, 9, 8, 0, 0).toISOString(), now), 'Upcoming');
   assert.equal(followUpCategory('2026-10-07T12:00:00+05:30', new Date('2026-10-07T06:31:00Z')), 'Overdue');
 });
+
+test('Home asks server for due only, preserves filter through pagination and excludes future/completed', async () => {
+  const requests = [];
+  const now = Date.now();
+  const due = { id: 1, status: 'PENDING', scheduled_at: new Date(now - 1000).toISOString() };
+  const service = load(async url => {
+    requests.push(url);
+    return requests.length === 1 ? { results: [due, { ...due, id: 2, scheduled_at: new Date(now + 86400000).toISOString() }], next: '?page=2' }
+      : { results: [{ ...due, id: 3, status: 'COMPLETED' }], next: null };
+  });
+  assert.deepEqual(Array.from(await service.loadFollowUps('session', true), x => x.id), [1]);
+  assert.equal(requests[0], '/mobile/follow-ups/?due=true');
+  assert.equal(requests[1], '/mobile/follow-ups/?page=2&due=true');
+});

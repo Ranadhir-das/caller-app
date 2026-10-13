@@ -1,8 +1,9 @@
-import { loadFollowUps, DashboardFollowUp } from '@/services/followUps';
+import { loadFollowUps, completeFollowUp, DashboardFollowUp } from '@/services/followUps';
 import type { InterestedDetails } from '@/types';
 import React, {
   createContext,
   useContext,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -42,6 +43,7 @@ type UpdateLeadData = {
 // --------------------------------------------------
 
 export type ApiLead = {
+  service_code?: string;
   preferred_course?: string | null; preferred_course_custom?: string; interested_details?: InterestedDetails | null;
   batch_id?: number | null;
   batch_name?: string;
@@ -92,6 +94,8 @@ function mapApiStatus(
     case 'BUSY':
       return 'busy';
 
+    case 'CONVERTED': return 'converted';
+    case 'FOLLOW_UP_REQUIRED': return 'follow_up_required';
     case 'CALL_BACK':
       return 'call_back';
 
@@ -133,6 +137,7 @@ export function mapApiLead(
     preferredCourse: lead.preferred_course, preferredCourseCustom: lead.preferred_course_custom, interestedDetails: lead.interested_details,
     id: String(lead.id),
     batchId: lead.batch_id,
+    serviceCode: lead.service_code,
     batchName: lead.batch_name || "Unbatched leads",
     name: lead.name,
     phone: lead.phone,
@@ -200,6 +205,8 @@ type LeadContextType = {
   refreshError: string | null;
   leads: Lead[];
   dashboardFollowUps: DashboardFollowUp[];
+  completeFollowUp: (id: number) => Promise<void>;
+  removeResolvedFollowUps: (ids: number[]) => void;
   availableLeads: AvailableLead[];
   loadingAvailable: boolean;
   availableError: string | null;
@@ -264,22 +271,24 @@ export function LeadProvider({
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const refreshRef = useRef<() => Promise<void>>(async () => {});
-  const refresh = () => refreshRef.current();
+  const refresh = useCallback(() => refreshRef.current(), []);
+  const resolvedIds = useRef(new Set<number>());
   useEffect(() => {
     let cancelled = false;
-    let inFlight = false;
+    let inFlight: Promise<void> | null = null;
+    let reloadRequested = false;
+    resolvedIds.current.clear();
     setDashboardFollowUps([]);
     setLeads([]);
     setCallHistory([]);
     setAvailableLeads([]);
-    const loadData = async () => {
-      if (!sessionToken || user?.role !== 'CALLER' || inFlight) return;
-      inFlight = true;
+    const performLoad = async () => {
+      if (!sessionToken || user?.role !== 'CALLER') return;
       setRefreshing(true);
       setRefreshError(null);
       setAvailableError(null);
       try {
-        const [leadResponse, historyResponse, availableResponse, followUpResponse] = await Promise.all([
+        const [leadResponse, historyResponse, availableResponse, followUpResponse, dueFollowUpResponse] = await Promise.all([
           apiRequest<ApiLead[]>('/mobile/leads/', { token: sessionToken }),
           apiRequest<Array<{
             id: number; lead: number | null; lead_name: string | null; lead_phone: string | null;
@@ -293,13 +302,16 @@ export function LeadProvider({
             return [] as ApiAvailableLead[];
           }),
           loadFollowUps(sessionToken),
+          loadFollowUps(sessionToken, true),
         ]);
-        if (cancelled) return;
+        if (cancelled || reloadRequested) return;
         setLeads(leadResponse.map(lead => {
           const pending = followUpResponse.find(item => item.lead === lead.id);
           return { ...mapApiLead(lead), followUpDate: pending?.scheduled_at };
         }));
-        setDashboardFollowUps(followUpResponse);
+        setDashboardFollowUps(dueFollowUpResponse.filter(item => !resolvedIds.current.has(item.id)));
+        // This completed refresh is newer than every successful local mutation.
+        resolvedIds.current.clear();
         setCallHistory(historyResponse.map(call => ({
           id: String(call.id), leadId: call.lead == null ? '' : String(call.lead), leadName: call.lead_name || call.phone_number || 'External call',
           phone: call.phone_number || call.lead_phone || '', isExternal: call.lead == null,
@@ -315,7 +327,17 @@ export function LeadProvider({
         );
       } catch (error) {
         if (!cancelled) setRefreshError('Could not refresh. Check your connection and try again.');
-      } finally { inFlight = false; if (!cancelled) setRefreshing(false); }
+      } finally { if (!cancelled && !reloadRequested) setRefreshing(false); }
+    };
+    const loadData = (): Promise<void> => {
+      reloadRequested = true;
+      if (!inFlight) {
+        inFlight = (async () => {
+          do { reloadRequested = false; await performLoad(); }
+          while (reloadRequested && !cancelled);
+        })().finally(() => { inFlight = null; });
+      }
+      return inFlight;
     };
     refreshRef.current = loadData;
     void loadData();
@@ -324,6 +346,17 @@ export function LeadProvider({
     });
     return () => { cancelled = true; subscription.remove(); };
   }, [sessionToken, user?.role]);
+
+  const removeResolvedFollowUps = (ids: number[]) => {
+    ids.forEach(id => resolvedIds.current.add(id));
+    setDashboardFollowUps(items => items.filter(item => !ids.includes(item.id)));
+  };
+  const finishFollowUp = async (id: number) => {
+    if (!sessionToken) throw new Error('Please sign in again.');
+    await completeFollowUp(sessionToken, id);
+    removeResolvedFollowUps([id]);
+    void refresh();
+  };
 
   // ------------------------------------------------
   // UPDATE LEAD
@@ -677,6 +710,8 @@ export function LeadProvider({
         refreshError,
         leads,
         dashboardFollowUps,
+        completeFollowUp: finishFollowUp,
+        removeResolvedFollowUps,
         availableLeads,
         loadingAvailable,
         availableError,

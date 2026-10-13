@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -77,40 +78,39 @@ export default function DirectDialerScreen() {
     if (leadId) {
       return leads.find((item) => item.id === leadId);
     }
+    // Display only an exact formatted-number match. The server resolves identity.
     const clean = phone.replace(/[^0-9]/g, '');
-    if (clean.length >= 7) {
-      return leads.find(
-        (l) =>
-          l.phone.replace(/[^0-9]/g, '').endsWith(clean) ||
-          clean.endsWith(l.phone.replace(/[^0-9]/g, ''))
-      );
-    }
-    return undefined;
+    return clean ? leads.find(l => l.phone.replace(/[^0-9]/g, '') === clean) : undefined;
   }, [leadId, phone, leads]);
 
-  const handleDigitPress = (digit: string) => {
-    if (phone.length >= 25) return;
-    setPhone((prev) => prev + digit);
+  const selection = useRef({ start: phone.length, end: phone.length });
+  const [nativeSelection, setNativeSelection] = useState(selection.current);
+  const replaceSelection = (text: string, backspace = false) => {
+    if (busy) return;
+    const end = Math.min(selection.current.end, phone.length);
+    const start = Math.min(selection.current.start, end);
+    const from = backspace && start === end ? Math.max(0, start - 1) : start;
+    const next = phone.slice(0, from) + text + phone.slice(end);
+    setPhone(next);
     setLeadId(undefined);
+    selection.current = { start: from + text.length, end: from + text.length };
+    setNativeSelection(selection.current);
   };
-
-  const handleZeroLongPress = () => {
-    if (phone.length >= 25) return;
-    setPhone((prev) => prev + '+');
-    setLeadId(undefined);
-  };
-
-  const handleDelete = () => {
-    setPhone((prev) => prev.slice(0, -1));
-    setLeadId(undefined);
-  };
-
+  const handleDigitPress = (digit: string) => replaceSelection(digit);
+  const handleZeroLongPress = () => replaceSelection('+');
+  const handleDelete = () => replaceSelection('', true);
   const handleClear = () => {
+    if (busy) return;
     setPhone('');
+    selection.current = { start: 0, end: 0 };
+    setNativeSelection(selection.current);
     setLeadId(undefined);
   };
 
   const handleSelectLead = (selectedId: string, selectedPhone: string) => {
+    if (busy) return;
+    selection.current = { start: selectedPhone.length, end: selectedPhone.length };
+    setNativeSelection(selection.current);
     setPhone(selectedPhone);
     setLeadId(selectedId);
   };
@@ -121,20 +121,21 @@ export default function DirectDialerScreen() {
       Alert.alert('Android required', 'Cellular calling is available on Android devices.');
       return;
     }
-    const digitsOnly = phone.replace(/[^0-9]/g, '');
-    if (!/^\+?[0-9 ().-]+$/.test(phone) || digitsOnly.length < 7 || digitsOnly.length > 15) {
+    const dialedNumber = phone.trim();
+    const digitsOnly = dialedNumber.replace(/[^0-9]/g, '').replace(/^00/, '');
+    if (!/^\+?[0-9 ().-]+$/.test(dialedNumber) || digitsOnly.length < 7 || digitsOnly.length > 15) {
       Alert.alert('Invalid number', 'Enter a phone number with 7 to 15 digits.');
       return;
     }
     calling.current = true;
     setBusy(true);
     try {
-      const selected = leads.find((item) => item.id === leadId) || matchedLead;
-      const target = await apiRequest<{ phone_number: string; lead: number | null; lead_name: string | null }>(
+      const selected = leads.find((item) => item.id === leadId);
+      const target = await apiRequest<{ phone_number: string; lead: number | null; lead_name: string | null; service_code?: string; is_claimed?: boolean }>(
         '/calls/resolve/',
         {
           method: 'POST',
-          body: selected ? { lead: Number(selected.id) } : { phone_number: phone },
+          body: selected ? { lead: Number(selected.id) } : { phone_number: dialedNumber },
           token,
         }
       );
@@ -146,6 +147,8 @@ export default function DirectDialerScreen() {
             phone_number: target.phone_number,
             id: target.lead ? String(target.lead) : '',
             name: target.lead_name || target.phone_number,
+            service_code: target.service_code,
+            isClaimed: target.is_claimed ? '1' : '0',
           },
         });
       }
@@ -196,16 +199,18 @@ export default function DirectDialerScreen() {
         {/* Display Card */}
         <View style={styles.displayCard}>
           <View style={styles.numberRow}>
-            <Text
-              style={[
-                styles.numberText,
-                !phone && styles.placeholderText,
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {phone || 'Enter number'}
-            </Text>
+            <TextInput
+              selection={nativeSelection}
+              style={styles.numberText}
+              value={phone}
+              placeholder="Enter number"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Phone number"
+              keyboardType="phone-pad"
+              editable={!busy}
+              onChangeText={value => { setPhone(value); setLeadId(undefined); }}
+              onSelectionChange={({ nativeEvent }) => { selection.current = nativeEvent.selection; setNativeSelection(nativeEvent.selection); }}
+            />
 
             {phone.length > 0 && (
               <Pressable

@@ -64,7 +64,9 @@ type BackendOutcome =
   | 'NOT_REACHABLE'
   | 'RINGING'
   | 'ADMISSION_DONE_BY_OTHER_CONSULTANCY'
-  | 'B2B';
+  | 'B2B'
+  | 'CONVERTED'
+  | 'FOLLOW_UP_REQUIRED';
 
 const outcomeToBackend: Record<string, BackendOutcome> = {
   interested: 'INTERESTED',
@@ -81,6 +83,8 @@ const outcomeToBackend: Record<string, BackendOutcome> = {
   ringing: 'RINGING',
   admission_done_by_other_consultancy: 'ADMISSION_DONE_BY_OTHER_CONSULTANCY',
   b2b: 'B2B',
+  converted: 'CONVERTED',
+  follow_up_required: 'FOLLOW_UP_REQUIRED',
 };
 
 export default function CallOutcomeScreen() {
@@ -104,6 +108,7 @@ export default function CallOutcomeScreen() {
     leads,
     refresh,
     addCallHistory,
+    removeResolvedFollowUps,
     getNextPendingLead,
   } = useLeads();
 
@@ -116,6 +121,7 @@ export default function CallOutcomeScreen() {
   const saveLock = useRef(false);
   const legacyId = useRef(newCallId());
   const lead = leads.find((item) => item.id === (draft?.leadId || id));
+  const apostille = draft?.serviceCode === 'APOSTILLE';
   const target = draft ? { name: draft.name, phone: draft.phone } : lead;
 
   const [selectedOutcome, setSelectedOutcome] = useState('');
@@ -155,7 +161,7 @@ export default function CallOutcomeScreen() {
           await saveCallDraft(saved);
         }
         if (!saved) throw new Error('Call timing information is missing. Return to the dialer.');
-        const needsCourse = !saved.savedCallId && (incompleteInterestedPayload(saved.payload) ||
+        const needsCourse = saved.serviceCode !== 'APOSTILLE' && !saved.savedCallId && (incompleteInterestedPayload(saved.payload) ||
           (!saved.payload && saved.outcome === 'interested' && !completeInterestedSelection(
             saved.selectedCourse || '', saved.customCourse || '', saved.admissionYear || '')));
         if (needsCourse && saved.payload) {
@@ -229,11 +235,11 @@ export default function CallOutcomeScreen() {
 
   const handleOutcomeChange = (outcomeId: string) => {
     setSelectedOutcome(outcomeId);
-    if (outcomeId === 'interested') setCourseSteps(true);
+    if (outcomeId === 'interested' && !apostille) setCourseSteps(true);
     else { setSelectedCourse(''); setCustomCourse(''); setAdmissionYear(''); }
     setWhatsappMessage(''); setWhatsappTemplate(undefined);
 
-    if (outcomeId !== 'call_back') {
+    if (!['call_back', 'follow_up_required'].includes(outcomeId)) {
       setFollowUpDate(null);
       setHasSelectedDate(false);
       setHasSelectedTime(false);
@@ -292,11 +298,12 @@ export default function CallOutcomeScreen() {
     setHasSelectedTime(true);
   };
 
-  const interestedReady = completeInterestedSelection(selectedCourse, customCourse, admissionYear);
+  const interestedReady = apostille || completeInterestedSelection(selectedCourse, customCourse, admissionYear);
   const canSave = !!selectedOutcome && !saving && !savedCallId && !courseSteps &&
     (selectedOutcome !== 'interested' || interestedReady);
 
   const finish = () => {
+    if (apostille && draft.leadId) { router.replace(`/apostille-lead?id=${draft.leadId}` as never); return; }
     if (draft.direct) { router.replace('/direct-dialer'); return; }
     const nextLead = getNextPendingLead(draft.leadId);
     if (nextLead) router.replace({ pathname: '/dialer', params: { id: nextLead.id } });
@@ -309,7 +316,7 @@ export default function CallOutcomeScreen() {
     if (selectedOutcome === 'interested' && !interestedReady) { setCourseSteps(true); return; }
 
     // Caller mandatory follow-up check whenever follow-up is available
-    if (isCaller && allowsContact(selectedOutcome)) {
+    if (isCaller && allowsContact(selectedOutcome) && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome))) {
       if (!followUpDate || !hasSelectedDate) {
         Alert.alert('Follow-up Date Required', 'Please select a follow-up date for this lead.');
         return;
@@ -321,7 +328,7 @@ export default function CallOutcomeScreen() {
     }
 
     // Call back outcome always requires follow-up date and time
-    if (!isCaller && selectedOutcome === 'call_back' && (!followUpDate || !hasSelectedDate || !hasSelectedTime)) {
+    if (!isCaller && ['call_back', 'follow_up_required'].includes(selectedOutcome) && (!followUpDate || !hasSelectedDate || !hasSelectedTime)) {
       Alert.alert('Follow-up Required', 'Please select a follow-up date and time.');
       return;
     }
@@ -348,6 +355,7 @@ export default function CallOutcomeScreen() {
     }
 
     let saved: {
+      completed_followup_ids?: number[];
       id: number; lead: number | null; lead_name: string | null; phone_number: string;
       followup: { scheduled_at: string; status: string } | null;
       selected_course?: string | null; selected_course_custom?: string; expected_admission_year?: number | null;
@@ -383,6 +391,7 @@ export default function CallOutcomeScreen() {
       followUpDate: saved.followup?.scheduled_at, followUpStatus: saved.followup?.status,
     };
     try {
+      removeResolvedFollowUps(saved.completed_followup_ids || []);
       addCallHistory(newCall);
       if (!draft.direct) recordCall(mobileStatus as Parameters<typeof recordCall>[0]);
     } catch (error) { console.warn('Outcome saved; local display update pending', error); }
@@ -395,7 +404,7 @@ export default function CallOutcomeScreen() {
 
     // Forwarding is an optional extra step; it never alters the saved outcome, course, year or points.
     const savedLeadId = saved.lead;
-    const proceed = canOfferForward(user, payload.outcome, savedLeadId) && savedLeadId != null
+    const proceed = !apostille && canOfferForward(user, payload.outcome, savedLeadId) && savedLeadId != null
       ? () => setForwardLeadId(savedLeadId)
       : finish;
 
@@ -467,7 +476,7 @@ export default function CallOutcomeScreen() {
         </Text>
 
         <View style={styles.outcomeGrid}>
-          {outcomes.map((outcome) => {
+          {(apostille ? [...outcomes.filter(o => ['interested', 'not_interested', 'no_answer', 'call_back', 'wrong_number'].includes(o.id)), { id: 'converted', label: 'Converted', icon: '\u2713' }, { id: 'follow_up_required', label: 'Follow-up Required', icon: '\u23F0' }] : outcomes).map((outcome) => {
             const selected =
               selectedOutcome === outcome.id;
 
@@ -507,7 +516,7 @@ export default function CallOutcomeScreen() {
         {courseSteps && <InterestedCourseSteps visible course={selectedCourse} custom={customCourse} year={admissionYear}
           onCancel={() => { setCourseSteps(false); if (!interestedReady) setSelectedOutcome(''); }}
           onComplete={(course, custom, year) => { setSelectedCourse(course); setCustomCourse(custom); setAdmissionYear(year); setCourseSteps(false); }} />}
-        {selectedOutcome === 'interested' && <View style={styles.followUpCard}>
+        {selectedOutcome === 'interested' && !apostille && <View style={styles.followUpCard}>
           <Text style={styles.sectionTitle}>Interested: {courseLabel(selectedCourse, customCourse)}</Text>
           <Text style={styles.phone}>Expected admission: {admissionYear || 'Select year'}</Text>
           <Pressable disabled={saving || !!savedCallId || !!draft.payload} style={styles.dateButton} onPress={() => setCourseSteps(true)}><Text style={styles.dateButtonText}>Edit course and year</Text></Pressable>
@@ -534,9 +543,9 @@ export default function CallOutcomeScreen() {
           <View style={styles.followUpCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={styles.followUpTitle}>
-                📅 Follow-up Date & Time {isCaller && <Text style={{ color: colors.danger }}>*</Text>}
+                📅 Follow-up Date & Time {isCaller && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && <Text style={{ color: colors.danger }}>*</Text>}
               </Text>
-              {isCaller && (
+              {isCaller && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && (
                 <View style={{ backgroundColor: colors.accentSoft, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Required</Text>
                 </View>

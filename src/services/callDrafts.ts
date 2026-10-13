@@ -10,6 +10,7 @@ export type CallPayload = {
 
 };
 export type CallDraft = {
+  serviceCode?: string;
   id: string; userId: number; phone: string; name: string; leadId?: string;
   direct: boolean; startedAt?: string; endedAt?: string; durationSeconds?: number;
   outcome?: string; notes?: string; callbackAt?: string; payload?: CallPayload;
