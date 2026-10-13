@@ -35,7 +35,7 @@ export async function uploadDraftRecording(userId: number, draftId: string, toke
       body.append('recording', file);
       body.append('duration_seconds', String(draft.durationSeconds || 0));
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
+      const timeout = setTimeout(() => controller.abort(), 180000);
       try {
         console.log('RECORDING_UPLOAD: uploading for call', draft.savedCallId);
         const response = await fetch(`${API_BASE_URL}/calls/${draft.savedCallId}/recording/`, {

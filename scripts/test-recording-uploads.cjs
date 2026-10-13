@@ -129,3 +129,7 @@ test('an empty success response cannot authorize deletion', async () => {
   await assert.rejects(upload(), /confirmation/);
   assert.equal(state.deleted, false);
 });
+
+test('recording upload timeout is configured to 180 seconds for slow networks', () => {
+  assert.match(source, /setTimeout\(\(\)\s*=>\s*controller\.abort\(\),\s*180000\)/);
+});
