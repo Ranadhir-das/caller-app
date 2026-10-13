@@ -67,3 +67,12 @@ example
 # Local Android/Gradle build caches
 .gradle/
 **/.gradle/
+
+/android/keystore.properties
+
+# Local release/audit inputs (keep the shared template)
+.env
+.env.*
+!.env.example
+/app.json.backup-*
+/expo-config-check.json

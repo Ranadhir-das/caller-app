@@ -1,9 +1,9 @@
 export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.31.188:8000/api/v1"
+  process.env.EXPO_PUBLIC_API_BASE_URL || "https://vaaniapp.co.in/api/v1"
 ).replace(/\/+$/, "");
 
 // The CRM's own app-introduction/download page, on whatever host this build
-// points at — derived from API_BASE_URL rather than hardcoded, so a local dev
+// points at - derived from API_BASE_URL rather than hardcoded, so a local dev
 // build links to the local dev server and a production build links to the
 // real domain.
 export const APP_DOWNLOAD_URL = `${API_BASE_URL.replace(/\/api\/v1$/, "")}/app/`;
