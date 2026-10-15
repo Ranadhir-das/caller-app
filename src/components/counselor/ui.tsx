@@ -7,6 +7,7 @@ import {
   formatContactTime,
   formatDuration,
   type CounselorLeadSummary,
+  type CounselorCreatedLeadSummary,
 } from '@/services/counselor';
 
 export function relativeDate(iso?: string | null): string {
@@ -61,6 +62,38 @@ export function CounselorLeadRow({ lead, styles, onPress }: {
             </Text>
           </View>
         )}
+      </View>
+    </Pressable>
+  );
+}
+
+export function CounselorCreatedLeadRow({ lead, styles, onPress }: {
+  lead: CounselorCreatedLeadSummary;
+  styles: ReturnType<typeof createCounselorStyles>;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${lead.name}`} onPress={onPress}
+      style={({ pressed }) => [styles.leadRow, pressed && styles.pressed]}>
+      <View style={styles.leadAvatar}><Text style={styles.leadAvatarText}>{initialsOf(lead.name)}</Text></View>
+      <View style={{ flex: 1, gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <Text style={[styles.leadName, { flex: 1 }]} numberOfLines={1}>{lead.name}</Text>
+          <View style={styles.createdStatusPill}>
+            <Text style={styles.createdStatusPillText}>{lead.status_display || lead.status}</Text>
+          </View>
+        </View>
+        <Text style={styles.leadMeta} numberOfLines={1}>
+          {lead.phone}{lead.course_label ? ` · ${lead.course_label}` : ''}{lead.location ? ` · ${lead.location}` : ''}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>
+          <View style={styles.callerTag}>
+            <Text style={styles.callerTagText} numberOfLines={1}>
+              {lead.assigned_caller_name ? `Assigned: ${lead.assigned_caller_name}` : 'Unassigned'}
+            </Text>
+          </View>
+          <Text style={styles.leadDateMeta}>{relativeDate(lead.created_at)}</Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -180,5 +213,86 @@ export const createCounselorStyles = (c: AppColors) => {
     backIcon: { color: c.text, fontSize: 26, marginTop: -2 },
     readOnlyTag: { color: c.muted, fontSize: 11, fontWeight: '700' },
     row: { flexDirection: 'row', gap: 10 },
+    createLeadBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      backgroundColor: soft,
+      borderColor: COUNSELOR_TEAL,
+      borderWidth: 1.5,
+      borderRadius: 22,
+      padding: 16,
+    },
+    createLeadIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: COUNSELOR_TEAL,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    createLeadPlus: { color: '#FFFFFF', fontSize: 24, fontWeight: '700', marginTop: -2 },
+    createLeadTitle: { color: c.text, fontSize: 16, fontWeight: '800' },
+    createLeadSubtitle: { color: c.muted, fontSize: 12 },
+    createLeadArrow: { color: COUNSELOR_TEAL, fontSize: 18, fontWeight: '800' },
+    tabSelector: {
+      flexDirection: 'row',
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      padding: 4,
+      borderWidth: 1,
+      borderColor: c.border,
+      gap: 4,
+      marginBottom: 4,
+    },
+    tabButton: {
+      flex: 1,
+      paddingVertical: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 12,
+    },
+    tabButtonActive: {
+      backgroundColor: COUNSELOR_TEAL,
+    },
+    tabButtonText: {
+      color: c.muted,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    tabButtonTextActive: {
+      color: '#FFFFFF',
+      fontWeight: '800',
+    },
+    createdStatusPill: {
+      backgroundColor: soft,
+      borderColor: COUNSELOR_TEAL,
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    createdStatusPillText: {
+      color: COUNSELOR_TEAL,
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+    callerTag: {
+      backgroundColor: dark ? '#1A2333' : '#F1F5F9',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+      flexShrink: 1,
+    },
+    callerTagText: {
+      color: c.text,
+      fontSize: 11,
+      fontWeight: '600',
+    },
+    leadDateMeta: {
+      color: c.muted,
+      fontSize: 11,
+    },
   });
 };

@@ -121,6 +121,7 @@ function AppNavigator() {
           <Stack.Screen name="counselor" />
           <Stack.Screen name="counselor-lead" />
           <Stack.Screen name="counselor-note" />
+          <Stack.Screen name="counselor-created-lead" />
         </Stack.Protected>
       </Stack>
     </>

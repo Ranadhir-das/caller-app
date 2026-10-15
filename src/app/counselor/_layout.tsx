@@ -10,6 +10,7 @@ export default function CounselorTabsLayout() {
     <Tabs screenOptions={{ headerShown: false }}
       tabBar={props => <CallerTabBar {...props} accent={COUNSELOR_TEAL} inactiveTint="#A7E3DA" />}>
       <Tabs.Screen name="index" options={{ title: 'Dashboard' }} />
+      <Tabs.Screen name="add-lead" options={{ title: 'Add Lead' }} />
       <Tabs.Screen name="leads" options={{ title: 'My leads' }} />
       <Tabs.Screen name="more" options={{ title: 'More' }} />
     </Tabs>

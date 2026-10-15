@@ -38,7 +38,7 @@ export async function cleanupNoticeAttachmentCache() {
     const root = cacheRoot();
     if (!(await FS.getInfoAsync(root)).exists) return;
     for (const name of await FS.readDirectoryAsync(root)) {
-      if (!/^notice-\d+-\d+-\d+-[a-z0-9]+$/.test(name)) continue;
+      if (!/^(?:notice-\d+-\d+|attachment-\d+)-\d+-[a-z0-9]+$/.test(name)) continue;
       const dir = `${root}${name}/`;
       if (activeDirectories.has(dir)) continue;
       const info = await FS.getInfoAsync(dir);
@@ -49,16 +49,15 @@ export async function cleanupNoticeAttachmentCache() {
   } catch { /* Cache maintenance must not prevent opening a notice. */ }
 }
 
-async function downloadAndOpen(noticeId: number, attachment: NoticeAttachment, token: string, signal?: AbortSignal) {
+async function downloadAndOpen(path: string, attachment: DownloadAttachment, token: string, signal?: AbortSignal) {
   if (Platform.OS !== 'android') throw new Error('Opening notice attachments is currently supported on Android.');
   // Lazy loading keeps older native builds usable and surfaces a friendly error on tap.
   let launcher: typeof import('expo-intent-launcher');
   try { launcher = await import('expo-intent-launcher'); }
   catch { throw new Error('This app build needs the attachment viewer update. Please install the updated Vaani app.'); }
   if (signal?.aborted) return;
-  const path = endpoint(noticeId, attachment.id);
   await cleanupNoticeAttachmentCache();
-  const dir = `${cacheRoot()}notice-${noticeId}-${attachment.id}-${Date.now()}-${Math.random().toString(36).slice(2)}/`;
+  const dir = `${cacheRoot()}attachment-${attachment.id}-${Date.now()}-${Math.random().toString(36).slice(2)}/`;
   activeDirectories.add(dir);
   try {
     await FS.makeDirectoryAsync(dir, { intermediates: true });
@@ -87,11 +86,18 @@ async function downloadAndOpen(noticeId: number, attachment: NoticeAttachment, t
   }
 }
 
-export function openNoticeAttachment(noticeId: number, attachment: NoticeAttachment, token: string, signal?: AbortSignal) {
-  const key = `${token}:${noticeId}:${attachment.id}`;
+type DownloadAttachment = Pick<NoticeAttachment, 'id' | 'original_filename' | 'mime_type' | 'file_size'>;
+
+/** Shared authenticated binary download and local viewer, retaining the notice cache. */
+export function openAuthenticatedAttachment(path: string, attachment: DownloadAttachment, token: string, signal?: AbortSignal) {
+  const key = `${token}:${path}`;
   const existing = inFlight.get(key);
   if (existing) return existing;
-  const operation = downloadAndOpen(noticeId, attachment, token, signal).finally(() => inFlight.delete(key));
+  const operation = downloadAndOpen(path, attachment, token, signal).finally(() => inFlight.delete(key));
   inFlight.set(key, operation);
   return operation;
+}
+
+export function openNoticeAttachment(noticeId: number, attachment: NoticeAttachment, token: string, signal?: AbortSignal) {
+  return openAuthenticatedAttachment(endpoint(noticeId, attachment.id), attachment, token, signal);
 }

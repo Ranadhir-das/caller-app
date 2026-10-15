@@ -1,4 +1,6 @@
-import { apiRequest, API_BASE_URL } from "./api";
+import { File } from 'expo-file-system';
+import { fetch } from 'expo/fetch';
+import { apiRequest, apiAuthHeaders, API_BASE_URL } from "./api";
 
 export type ChatChannel = {
   id: number;
@@ -61,23 +63,36 @@ export async function sendMessageWithAttachment(
   if (text.trim()) {
     formData.append("text", text.trim());
   }
-  if (file) {
-    formData.append("file", {
-      uri: file.uri,
-      name: file.name,
-      type: file.type,
-    } as any);
+  if (file && file.uri) {
+    const fileInstance = new File(file.uri);
+    if (file.name) {
+      Object.defineProperty(fileInstance, 'name', { value: file.name, configurable: true, enumerable: true });
+    }
+    if (file.type) {
+      Object.defineProperty(fileInstance, 'type', { value: file.type, configurable: true, enumerable: true });
+    }
+    formData.append("file", fileInstance as any);
   }
 
-  const response = await fetch(`${API_BASE_URL}/mobile/chat/channels/${channelId}/messages/`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    body: formData,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/mobile/chat/channels/${channelId}/messages/`, {
+      method: "POST",
+      headers: apiAuthHeaders(token),
+      body: formData,
+    });
+  } catch (fetchError: unknown) {
+    const rawMessage = fetchError instanceof Error ? fetchError.message : String(fetchError);
+    if (/FormData|FormDataPart|BodyInit|Unsupported/i.test(rawMessage)) {
+      throw new Error(`Failed to serialize attachment for upload: ${rawMessage}`);
+    }
+    throw new Error('Could not upload the attachment. Check your connection and try again.');
+  }
 
   if (!response.ok) {
+    if (response.status === 413) {
+      throw new Error('Attachment is too large for the server (maximum 6 MB).');
+    }
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(errorBody.detail || `Upload failed (${response.status})`);
   }
@@ -85,12 +100,46 @@ export async function sendMessageWithAttachment(
   return response.json();
 }
 
+function attachmentEndpoint(id: number) {
+  if (!Number.isSafeInteger(id) || id < 1) throw new Error('Invalid chat attachment.');
+  return `/mobile/chat/attachments/${id}/download/`;
+}
+
+export function chatAttachmentImageSource(id: number, token: string) {
+  return { uri: `${API_BASE_URL}${attachmentEndpoint(id)}`, headers: apiAuthHeaders(token) };
+}
+
+export async function openChatAttachment(attachment: ChatAttachment, token: string, signal?: AbortSignal) {
+  // The endpoint is built from the server's ID, never from an arbitrary file_url.
+  const { openAuthenticatedAttachment } = await import('./noticeAttachments');
+  return openAuthenticatedAttachment(attachmentEndpoint(attachment.id), {
+    id: attachment.id, original_filename: attachment.original_name,
+    mime_type: attachment.mime_type, file_size: attachment.file_size,
+  }, token, signal);
+}
+
+export type ChatTicketResponse = {
+  ticket: string;
+  expires_in: number;
+};
+
+export function getChatTicket(token: string, channelId: number): Promise<ChatTicketResponse> {
+  return apiRequest<ChatTicketResponse>(`/mobile/chat/channels/${channelId}/ticket/`, {
+    method: "POST",
+    token,
+  });
+}
+
 /** Base URL for the CRM API is like http://host:8000/api/v1 — the chat socket lives
  *  at /ws/chat/<id>/ on the same host, over ws:// (or wss:// when the API is https). */
-export function chatSocketUrl(channelId: number, token: string): string {
+export function chatSocketUrl(
+  channelId: number,
+  ticket: string,
+  paramName: "ticket" | "token" = "ticket"
+): string {
   const httpBase = API_BASE_URL.replace(/\/api\/v1$/, "");
   const wsBase = httpBase.replace(/^http/, "ws");
-  return `${wsBase}/ws/chat/${channelId}/?token=${encodeURIComponent(token)}`;
+  return `${wsBase}/ws/chat/${channelId}/?${paramName}=${encodeURIComponent(ticket)}`;
 }
 
 export function resolveAttachmentUrl(fileUrl: string): string {

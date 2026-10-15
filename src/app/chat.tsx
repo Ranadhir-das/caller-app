@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import * as WebBrowser from "expo-web-browser";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -28,9 +28,11 @@ import {
   ChatChannel,
   ChatMessage,
   chatSocketUrl,
+  getChatTicket,
   listChannels,
   listMessages,
-  resolveAttachmentUrl,
+  chatAttachmentImageSource,
+  openChatAttachment,
   sendMessage,
   sendMessageWithAttachment,
 } from "@/services/chat";
@@ -56,8 +58,18 @@ export default function ChatScreen() {
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [openingAttachment, setOpeningAttachment] = useState<number | null>(null);
+  const [failedImages, setFailedImages] = useState<Record<number, boolean>>({});
+  const attachmentRequest = useRef<AbortController | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectionSeqRef = useRef(0);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+
+  useEffect(() => {
+    setFailedImages({});
+    return () => { attachmentRequest.current?.abort(); };
+  }, [token, activeChannel?.id]);
 
   const speech = useSpeechToText({
     onResult: (spokenText) => {
@@ -87,27 +99,121 @@ export default function ChatScreen() {
     setMessages([]);
     if (!token || !activeChannel) return;
     let active = true;
+    const channelId = activeChannel.id;
+    let reconnectDelay = 2000;
 
-    listMessages(token, activeChannel.id)
-      .then((list) => {
-        if (active) setMessages(list);
-      })
-      .catch((e) => Alert.alert("Chat", e instanceof Error ? e.message : "Unable to load messages."));
-
-    const socket = new WebSocket(chatSocketUrl(activeChannel.id, token));
-    socketRef.current = socket;
-    socket.onmessage = (event) => {
-      if (!active) return;
-      const incoming: ChatMessage = JSON.parse(event.data);
-      setMessages((current) =>
-        current.some((m) => m.id === incoming.id) ? current : [...current, incoming]
-      );
+    const cleanupSocket = () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      if (socketRef.current) {
+        const s = socketRef.current;
+        socketRef.current = null;
+        s.onopen = null;
+        s.onmessage = null;
+        s.onerror = null;
+        s.onclose = null;
+        try {
+          s.close();
+        } catch {}
+      }
     };
+
+    const loadChannelMessages = () => {
+      listMessages(token, channelId)
+        .then((list) => {
+          if (active) setMessages(list);
+        })
+        .catch((e) => {
+          if (active) {
+            Alert.alert("Chat", e instanceof Error ? e.message : "Unable to load messages.");
+          }
+        });
+    };
+
+    loadChannelMessages();
+
+    const connect = async () => {
+      if (!active) return;
+      cleanupSocket();
+
+      const seq = ++connectionSeqRef.current;
+
+      try {
+        const ticketRes = await getChatTicket(token, channelId);
+        if (!active || seq !== connectionSeqRef.current) return;
+
+        const socket = new WebSocket(chatSocketUrl(channelId, ticketRes.ticket));
+        socketRef.current = socket;
+
+        socket.onopen = () => {
+          if (!active || seq !== connectionSeqRef.current) {
+            try { socket.close(); } catch {}
+            return;
+          }
+          reconnectDelay = 2000;
+        };
+
+        socket.onmessage = (event) => {
+          if (!active || seq !== connectionSeqRef.current) return;
+          try {
+            const incoming: ChatMessage = JSON.parse(event.data);
+            setMessages((current) =>
+              current.some((m) => m.id === incoming.id) ? current : [...current, incoming]
+            );
+          } catch {
+            // Ignore malformed message payloads safely
+          }
+        };
+
+        socket.onerror = () => {
+          // Do not log ticket or token credentials
+        };
+
+        socket.onclose = (event) => {
+          if (!active || seq !== connectionSeqRef.current) return;
+          socketRef.current = null;
+          if (event.code === 1000) return;
+
+          const delay = reconnectDelay;
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (active && seq === connectionSeqRef.current) {
+              void connect();
+            }
+          }, delay);
+        };
+      } catch {
+        if (!active || seq !== connectionSeqRef.current) return;
+        const delay = reconnectDelay;
+        reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (active && seq === connectionSeqRef.current) {
+            void connect();
+          }
+        }, delay);
+      }
+    };
+
+    void connect();
+
+    const appStateSub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" && active) {
+        loadChannelMessages();
+        const currentSocket = socketRef.current;
+        if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) {
+          reconnectDelay = 2000;
+          void connect();
+        }
+      }
+    });
 
     return () => {
       active = false;
-      socket.close();
-      socketRef.current = null;
+      connectionSeqRef.current++;
+      appStateSub.remove();
+      cleanupSocket();
     };
   }, [token, activeChannel?.id]);
 
@@ -184,11 +290,20 @@ export default function ChatScreen() {
   };
 
   const handleOpenAttachment = async (att: ChatAttachment) => {
-    const fullUrl = resolveAttachmentUrl(att.file_url);
+    if (attachmentRequest.current) return;
+    if (!token) { Alert.alert('Unable to open file', 'Please sign in again to open this attachment.'); return; }
+    const controller = new AbortController();
+    attachmentRequest.current = controller;
+    setOpeningAttachment(att.id);
     try {
-      await WebBrowser.openBrowserAsync(fullUrl);
-    } catch {
-      Alert.alert("Unable to open file", "Could not open attachment.");
+      await openChatAttachment(att, token, controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) Alert.alert('Unable to open file', error instanceof Error ? error.message : 'Could not open attachment. Please try again.');
+    } finally {
+      if (attachmentRequest.current === controller) {
+        attachmentRequest.current = null;
+        setOpeningAttachment(null);
+      }
     }
   };
 
@@ -287,20 +402,22 @@ export default function ChatScreen() {
                       {item.attachments.map((att) => {
                         const isImg = att.mime_type.includes("image");
                         const isVid = att.mime_type.includes("video");
-                        const fullUrl = resolveAttachmentUrl(att.file_url);
 
                         if (isImg) {
                           return (
                             <Pressable
                               key={att.id}
                               onPress={() => handleOpenAttachment(att)}
+                              disabled={openingAttachment !== null}
                               style={styles.chatImageWrap}
                             >
-                              <Image
-                                source={{ uri: fullUrl }}
+                              {failedImages[att.id] ? <Text style={{ color: colors.text }}>Image unavailable. Tap to open or retry.</Text> : <Image
+                                source={token ? chatAttachmentImageSource(att.id, token) : undefined}
+                                onError={() => setFailedImages(current => ({ ...current, [att.id]: true }))}
                                 style={styles.chatImage}
                                 resizeMode="cover"
-                              />
+                              />}
+                              {openingAttachment === att.id && <ActivityIndicator />}
                             </Pressable>
                           );
                         }
@@ -309,6 +426,7 @@ export default function ChatScreen() {
                           <Pressable
                             key={att.id}
                             onPress={() => handleOpenAttachment(att)}
+                            disabled={openingAttachment !== null}
                             style={[
                               styles.fileCard,
                               isMine ? styles.fileCardMine : styles.fileCardTheirs,
@@ -331,6 +449,7 @@ export default function ChatScreen() {
                                 {isVid ? "Video" : "Document"} · {(att.file_size / 1024).toFixed(0)} KB
                               </Text>
                             </View>
+                            {openingAttachment === att.id && <ActivityIndicator />}
                             <Text style={[styles.fileArrow, isMine && { color: colors.onPrimary }]}>
                               ↗
                             </Text>

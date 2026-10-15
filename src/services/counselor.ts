@@ -14,6 +14,109 @@ export type CounselorOption = {
   active_leads: number;
 };
 
+export type EligibleCaller = {
+  id: number;
+  name: string;
+  username: string;
+  phone: string;
+  designation: string;
+};
+
+export type CreateLeadPayload = {
+  phone: string;
+  name?: string;
+  assigned_caller_id: number;
+  email?: string;
+  location?: string;
+  college?: string;
+  neet_status?: string;
+  pcb_percentage?: string | number;
+  preferred_intake?: string;
+  preferred_course?: string;
+  preferred_course_custom?: string;
+  notes?: string;
+  source?: string;
+};
+
+export type CreateLeadResult = {
+  success: boolean;
+  message: string;
+  lead: {
+    id: number;
+    name: string;
+    phone: string;
+    status: string;
+    status_display: string;
+    assigned_caller_id: number;
+    assigned_caller_name: string;
+    created_at: string;
+  };
+};
+
+export type CounselorCreatedLeadSummary = {
+  id: number;
+  name: string;
+  phone: string;
+  status: string;
+  status_display: string;
+  assigned_caller_id: number | null;
+  assigned_caller_name: string | null;
+  course_label: string;
+  location: string;
+  created_at: string;
+};
+
+export type CounselorCreatedLeadAssignmentHistory = {
+  id: number;
+  previous_caller_id: number | null;
+  previous_caller_name: string | null;
+  new_caller_id: number | null;
+  new_caller_name: string | null;
+  assigned_by_id: number | null;
+  assigned_by_name: string | null;
+  assigned_at: string;
+  reason: string;
+};
+
+export type CounselorCreatedLeadDetail = {
+  id: number;
+  name: string;
+  phone: string;
+  email: string;
+  location: string;
+  college: string;
+  neet_status: string;
+  pcb_percentage: string | null;
+  preferred_intake: string;
+  preferred_course: string | null;
+  preferred_course_custom: string;
+  course_label: string;
+  status: string;
+  status_display: string;
+  source: string;
+  campaign: string;
+  service: string;
+  notes: string;
+  assigned_caller_id: number | null;
+  assigned_caller_name: string | null;
+  assigned_caller_phone: string;
+  assigned_at: string | null;
+  created_at: string;
+  updated_at: string;
+  assignment_history: CounselorCreatedLeadAssignmentHistory[];
+};
+
+export type ReassignLeadResult = {
+  success: boolean;
+  message: string;
+  lead: {
+    id: number;
+    assigned_caller_id: number;
+    assigned_caller_name: string;
+    assigned_at: string;
+  };
+};
+
 export type CounselorAssignment = {
   id: number;
   counselor_id: number;
@@ -131,8 +234,8 @@ export function homeRouteFor(user?: { role?: string | null; needs_onboarding?: b
 }
 
 /** Routes a counselor may open: their workspace plus shared employee/account screens. */
-export const COUNSELOR_ROUTES = ['/counselor', '/counselor/index', '/counselor/leads', '/counselor/more',
-  '/counselor-lead', '/counselor-note'];
+export const COUNSELOR_ROUTES = ['/counselor', '/counselor/index', '/counselor/add-lead', '/counselor/leads', '/counselor/more',
+  '/counselor-lead', '/counselor-note', '/counselor-created-lead'];
 
 /** Mirrors the backend rule; the server remains the authority. */
 export function canOfferForward(user: { role?: string | null } | null | undefined, outcome: string, leadId: number | null | undefined): boolean {
@@ -185,6 +288,24 @@ export function buildCounselorNotePayload(notes: string, clientEventId: string, 
 }
 
 export const counselorApi = {
+  callers: (token: string) => apiRequest<{ callers: EligibleCaller[] }>('/mobile/counselor/callers/', { token }),
+  createLead: (token: string, payload: CreateLeadPayload) =>
+    apiRequest<CreateLeadResult>('/mobile/counselor/leads/create/', { token, method: 'POST', body: payload }),
+  createdLeads: (token: string, search = '') =>
+    apiRequest<{ total: number; leads: CounselorCreatedLeadSummary[] }>(
+      `/mobile/counselor/created-leads/${search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''}`,
+      { token }
+    ),
+  createdLeadDetail: (token: string, leadId: number | string) =>
+    apiRequest<{ lead: CounselorCreatedLeadDetail }>(
+      `/mobile/counselor/created-leads/${encodeURIComponent(String(leadId))}/`,
+      { token }
+    ),
+  reassignCreatedLead: (token: string, leadId: number | string, callerId: number) =>
+    apiRequest<ReassignLeadResult>(
+      `/mobile/counselor/created-leads/${encodeURIComponent(String(leadId))}/reassign/`,
+      { token, method: 'POST', body: { caller_id: callerId } }
+    ),
   directory: (token: string) => apiRequest<{ counselors: CounselorOption[] }>('/mobile/counselors/', { token }),
   leadState: (token: string, leadId: number | string) =>
     apiRequest<LeadCounselorState>(`/mobile/leads/${encodeURIComponent(String(leadId))}/counselor/`, { token }),

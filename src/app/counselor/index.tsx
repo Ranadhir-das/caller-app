@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { useAppStyles } from '@/context/AppThemeContext';
@@ -50,6 +50,23 @@ export default function CounselorDashboardScreen() {
           <Text style={styles.heroTitle}>{greeting()}, {(data?.counselor.name || user?.name || user?.username || '').split(' ')[0]}</Text>
           <Text style={styles.heroSubtitle}>Guide each student calmly — review the caller's notes, talk, and record your counselling notes.</Text>
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Create and assign new lead"
+          style={({ pressed }) => [styles.createLeadBanner, pressed && styles.pressed]}
+          onPress={() => router.push('/counselor/add-lead' as never)}
+        >
+          <View style={styles.createLeadIcon}>
+            <Text style={styles.createLeadPlus}>+</Text>
+          </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={styles.createLeadTitle}>Add Lead & Assign Caller</Text>
+            <Text style={styles.createLeadSubtitle}>Directly intake a student and assign to an active caller</Text>
+          </View>
+          <Text style={styles.createLeadArrow}>➔</Text>
+        </Pressable>
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.statsGrid}>
           {cards.map(([label, value]) => (
