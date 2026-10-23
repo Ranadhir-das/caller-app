@@ -28,6 +28,13 @@ export function websiteLeadNotificationTarget(
     };
   }
   if (payload.type === 'LEAD_ASSIGNED') {
+    const count = typeof payload.count === 'number' ? payload.count : Number(payload.count);
+    if (payload.tab === 'assigned' || (Number.isFinite(count) && count > 1)) {
+      return {
+        pathname: '/(tabs)/leads' as const,
+        params: { tab: 'assigned' },
+      };
+    }
     const value = payload.lead_id;
     if (typeof value !== 'number' && typeof value !== 'string') return null;
     if (!/^[1-9]\d*$/.test(String(value)) || !Number.isSafeInteger(Number(value))) return null;

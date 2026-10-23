@@ -1,3 +1,4 @@
+import { isCallerCapable, isCounselorCapable } from '@/services/capabilities';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
@@ -85,8 +86,8 @@ export default function NotificationsScreen() {
       if (focused.current && version === focusVersion.current) {
         setBusy(false);
           if (item) {
-            const isCaller = user?.role === 'CALLER' && !user.needs_onboarding;
-            const isCounselor = user?.role === 'COUNSELOR' && !user.needs_onboarding;
+            const isCaller = isCallerCapable(user) && !user?.needs_onboarding;
+            const isCounselor = isCounselorCapable(user) && !user?.needs_onboarding;
             const target = websiteLeadNotificationTarget(item.data, isCaller, !!user, isCounselor);
             if (target) {
               router.push({ ...target, params: { ...target.params,

@@ -1,3 +1,4 @@
+import { isCallerCapable } from '@/services/capabilities';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -21,7 +22,7 @@ import {
 
 export function CallerPointsCard() {
   const { user, token } = useAuth();
-  if (user?.role !== 'CALLER' || !token) return null;
+  if (!user || !isCallerCapable(user) || !token) return null;
   return <PointsCard key={user.id} token={token} />;
 }
 

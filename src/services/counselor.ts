@@ -1,4 +1,5 @@
 import { apiRequest } from './api';
+import { isCallerCapable, isCounselorCapable, isDualRole, type UserCapabilities } from './capabilities';
 
 /** Counselor workflow API + pure helpers. Counselors never touch caller outcomes, course or year. */
 
@@ -25,7 +26,7 @@ export type EligibleCaller = {
 export type CreateLeadPayload = {
   phone: string;
   name?: string;
-  assigned_caller_id: number;
+  assigned_caller_id?: number | null;
   email?: string;
   location?: string;
   college?: string;
@@ -47,10 +48,64 @@ export type CreateLeadResult = {
     phone: string;
     status: string;
     status_display: string;
-    assigned_caller_id: number;
-    assigned_caller_name: string;
+    assigned_caller_id: number | null;
+    assigned_caller_name: string | null;
     created_at: string;
   };
+};
+
+export type BatchCreateLeadItem = {
+  phone: string;
+  name?: string;
+  preferred_course?: string;
+  preferred_course_custom?: string;
+  notes?: string;
+  source?: string;
+  assigned_caller_id?: number | null;
+};
+
+export type BatchCreateLeadsPayload = {
+  leads: BatchCreateLeadItem[];
+  assigned_caller_id?: number | null;
+  preferred_course?: string;
+  preferred_course_custom?: string;
+  source?: string;
+};
+
+export type BatchCreateLeadsResult = {
+  success: boolean;
+  total: number;
+  created_count: number;
+  failed_count: number;
+  results: {
+    phone: string;
+    normalized_phone?: string;
+    success: boolean;
+    error?: string;
+    lead?: {
+      id: number;
+      name: string;
+      phone: string;
+      status: string;
+      status_display: string;
+      assigned_caller_id: number | null;
+      assigned_caller_name: string | null;
+      created_at: string;
+    };
+  }[];
+};
+
+export type DuplicateCheckItem = {
+  exists: boolean;
+  valid: boolean;
+  lead_id?: number | null;
+  name?: string;
+  assigned_caller_name?: string | null;
+  can_view?: boolean;
+};
+
+export type DuplicateCheckResult = {
+  results: Record<string, DuplicateCheckItem>;
 };
 
 export type CounselorCreatedLeadSummary = {
@@ -224,22 +279,22 @@ export type CounselorLeadDetail = {
 
 export type CounselorCallTiming = { started_at: string; ended_at: string; duration_seconds: number };
 
-export function isCounselor(user?: { role?: string | null } | null): boolean {
-  return (user?.role || '').toUpperCase() === 'COUNSELOR';
+export function isCounselor(user?: { role?: string | null; capabilities?: UserCapabilities | null } | null): boolean {
+  return isCounselorCapable(user);
 }
 
-/** Counselors land in their own workspace; everyone else keeps the existing '/employee' landing. */
-export function homeRouteFor(user?: { role?: string | null; needs_onboarding?: boolean } | null): '/counselor' | '/employee' {
-  return isCounselor(user) && !user?.needs_onboarding ? '/counselor' : '/employee';
+/** Counselors land in their own workspace; dual-role and callers keep the existing '/employee' landing. */
+export function homeRouteFor(user?: { role?: string | null; capabilities?: UserCapabilities | null; needs_onboarding?: boolean } | null): '/counselor' | '/employee' {
+  return isCounselorCapable(user) && !isCallerCapable(user) && !user?.needs_onboarding ? '/counselor' : '/employee';
 }
 
 /** Routes a counselor may open: their workspace plus shared employee/account screens. */
-export const COUNSELOR_ROUTES = ['/counselor', '/counselor/index', '/counselor/add-lead', '/counselor/leads', '/counselor/more',
+export const COUNSELOR_ROUTES = ['/counselor', '/counselor/index', '/counselor/add-lead', '/counselor/quick-capture', '/counselor/leads', '/counselor/more',
   '/counselor-lead', '/counselor-note', '/counselor-created-lead'];
 
 /** Mirrors the backend rule; the server remains the authority. */
-export function canOfferForward(user: { role?: string | null } | null | undefined, outcome: string, leadId: number | null | undefined): boolean {
-  return (user?.role || '').toUpperCase() === 'CALLER' && outcome.toUpperCase() === 'INTERESTED' && leadId != null;
+export function canOfferForward(user: { role?: string | null; capabilities?: UserCapabilities | null } | null | undefined, outcome: string, leadId: number | null | undefined): boolean {
+  return isCallerCapable(user) && outcome.toUpperCase() === 'INTERESTED' && leadId != null;
 }
 
 export function availabilityTone(availability: CounselorAvailability): 'success' | 'warning' | 'danger' | 'muted' {
@@ -291,6 +346,18 @@ export const counselorApi = {
   callers: (token: string) => apiRequest<{ callers: EligibleCaller[] }>('/mobile/counselor/callers/', { token }),
   createLead: (token: string, payload: CreateLeadPayload) =>
     apiRequest<CreateLeadResult>('/mobile/counselor/leads/create/', { token, method: 'POST', body: payload }),
+  checkDuplicates: (token: string, phones: string[]) =>
+    apiRequest<DuplicateCheckResult>('/mobile/counselor/leads/check-duplicates/', {
+      token,
+      method: 'POST',
+      body: { phones },
+    }),
+  batchCreateLeads: (token: string, payload: BatchCreateLeadsPayload) =>
+    apiRequest<BatchCreateLeadsResult>('/mobile/counselor/leads/batch-create/', {
+      token,
+      method: 'POST',
+      body: payload,
+    }),
   createdLeads: (token: string, search = '') =>
     apiRequest<{ total: number; leads: CounselorCreatedLeadSummary[] }>(
       `/mobile/counselor/created-leads/${search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''}`,

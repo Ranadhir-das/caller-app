@@ -7,7 +7,11 @@ export type CallPayload = {
   outcome: string; notes: string; callback_at?: string;
   selected_course?: string; selected_course_custom?: string; expected_admission_year?: number;
   whatsapp_message?: string; whatsapp_template?: number;
-
+  create_lead?: boolean;
+  student_name?: string;
+  preferred_course?: string;
+  preferred_course_custom?: string;
+  lead_source?: string;
 };
 export type CallDraft = {
   serviceCode?: string;
@@ -16,6 +20,11 @@ export type CallDraft = {
   outcome?: string; notes?: string; callbackAt?: string; payload?: CallPayload;
   selectedCourse?: string; customCourse?: string; admissionYear?: string;
   whatsappMessage?: string; whatsappTemplate?: number;
+  createLead?: boolean;
+  studentName?: string;
+  preferredCourse?: string;
+  preferredCourseCustom?: string;
+  leadSource?: string;
 
   recordingPath?: string;
   savedCallId?: number;

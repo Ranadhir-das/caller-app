@@ -1,4 +1,6 @@
 import React from 'react';
+import { QuickCaptureShareRegistration } from '@/components/QuickCaptureShareRegistration';
+import { IncomingCallBanner } from '@/components/IncomingCallBanner';
 import { PushNotificationRegistration } from '@/components/PushNotificationRegistration';
 import { EmployeeLocationRegistration } from '@/components/EmployeeLocationRegistration';
 import { PeerAppreciationModal } from '@/components/PeerAppreciationModal';
@@ -29,6 +31,7 @@ import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { DialerSessionProvider } from '@/context/DialerSessionContext';
 import { LeadProvider } from '@/context/LeadContext';
 import { COUNSELOR_ROUTES, isCounselor } from '@/services/counselor';
+import { isCallerCapable, isCounselorCapable, isDualRole } from '@/services/capabilities';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -46,23 +49,36 @@ function AuthRedirect() {
       return;
     }
 
+    if (!user) return;
+
     const employeeRoutes = ['/employee', '/employee/index', '/employee/attendance', '/employee/leave', '/employee/work', '/profile', '/settings', '/chat', '/notices', '/notifications', '/login'];
-    if (user && isCounselor(user) && !user.needs_onboarding) {
-      // Counselors never enter caller screens; they get their own workspace.
+    const canCaller = isCallerCapable(user) && !user.needs_onboarding;
+    const canCounselor = isCounselorCapable(user) && !user.needs_onboarding;
+
+    // Pure counselor entry flow: counselors land in /counselor
+    if (canCounselor && !canCaller) {
       if (pathname === '/login' || ![...employeeRoutes, ...COUNSELOR_ROUTES].includes(pathname)) {
         router.replace('/counselor' as never);
       }
       return;
     }
 
-    if (user && (user.role !== 'CALLER' || user.needs_onboarding) && !employeeRoutes.includes(pathname)) {
-      // '/employee' is the NativeTabs group root (like '/(tabs)' elsewhere) — navigating to
-      // '/employee/index' directly breaks at runtime ("Unmatched Route") even though it type-checks.
+    // Callers, dual-role employees, and general staff land on /employee from login
+    if (pathname === '/login') {
       router.replace('/employee' as never);
       return;
     }
-    if (user && pathname === '/login') {
+
+    // If on a counselor route without counselor capability, redirect out
+    if (COUNSELOR_ROUTES.includes(pathname) && !canCounselor) {
       router.replace('/employee' as never);
+      return;
+    }
+
+    // If on a caller route without caller capability, redirect to counselor or employee
+    if (!employeeRoutes.includes(pathname) && !COUNSELOR_ROUTES.includes(pathname) && !canCaller) {
+      router.replace(canCounselor ? ('/counselor' as never) : ('/employee' as never));
+      return;
     }
   }, [user, loading, pathname]);
 
@@ -84,6 +100,8 @@ function AppNavigator() {
   return (
     <>
       <AuthRedirect />
+      <QuickCaptureShareRegistration />
+      <IncomingCallBanner />
 
       <Stack
         screenOptions={{
@@ -101,11 +119,12 @@ function AppNavigator() {
           <Stack.Screen name="notices" />
           <Stack.Screen name="notifications" />
         </Stack.Protected>
-        <Stack.Protected guard={user?.role === 'CALLER' && !user.needs_onboarding}>
+        <Stack.Protected guard={isCallerCapable(user) && !user?.needs_onboarding}>
           <Stack.Screen name="direct-dialer" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="lead-details" />
           <Stack.Screen name="call-history-details" />
+          <Stack.Screen name="incoming-enquiry" />
           <Stack.Screen name="follow-up-details" />
           <Stack.Screen name="call-outcome" />
           <Stack.Screen name="dialer" />
@@ -117,7 +136,7 @@ function AppNavigator() {
             <Stack.Screen name="apostille-lead" />
           </Stack.Protected>
         </Stack.Protected>
-        <Stack.Protected guard={user?.role === 'COUNSELOR' && !user.needs_onboarding}>
+        <Stack.Protected guard={isCounselorCapable(user) && !user?.needs_onboarding}>
           <Stack.Screen name="counselor" />
           <Stack.Screen name="counselor-lead" />
           <Stack.Screen name="counselor-note" />

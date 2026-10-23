@@ -3,12 +3,16 @@ import { apiRequest } from "./api";
 
 const TOKEN_KEY = "caller_auth_token";
 
+export type { UserCapabilities } from './capabilities';
+export { isCallerCapable, isCounselorCapable, isDualRole, isFaceVerificationExempt } from './capabilities';
+
 export type LoggedInUser = {
   id: number;
   username: string;
   email: string;
   name: string;
   role: string;
+  capabilities?: import('./capabilities').UserCapabilities;
   needs_onboarding?: boolean;
   can_manage_apostille_leads?: boolean;
 };

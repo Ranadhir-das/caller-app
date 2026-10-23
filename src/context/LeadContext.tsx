@@ -26,6 +26,7 @@ import {
 
 import {
   getStoredToken,
+  isCallerCapable,
 } from '@/services/auth';
 
 // --------------------------------------------------
@@ -283,7 +284,7 @@ export function LeadProvider({
     setCallHistory([]);
     setAvailableLeads([]);
     const performLoad = async () => {
-      if (!sessionToken || user?.role !== 'CALLER') return;
+      if (!sessionToken || !isCallerCapable(user)) return;
       setRefreshing(true);
       setRefreshError(null);
       setAvailableError(null);
@@ -345,7 +346,7 @@ export function LeadProvider({
       if (state === 'active') void loadData();
     });
     return () => { cancelled = true; subscription.remove(); };
-  }, [sessionToken, user?.role]);
+  }, [sessionToken, user?.role, user?.capabilities?.caller]);
 
   const removeResolvedFollowUps = (ids: number[]) => {
     ids.forEach(id => resolvedIds.current.add(id));
@@ -593,7 +594,7 @@ export function LeadProvider({
 
   const refreshAvailableLeads = async () => {
     const token = sessionToken || (await getStoredToken());
-    if (!token || user?.role !== 'CALLER') return;
+    if (!token || !isCallerCapable(user)) return;
     setLoadingAvailable(true);
     setAvailableError(null);
     try {

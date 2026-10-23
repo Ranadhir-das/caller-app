@@ -13,6 +13,7 @@ export default function CounselorTabsLayout() {
       <Tabs.Screen name="add-lead" options={{ title: 'Add Lead' }} />
       <Tabs.Screen name="leads" options={{ title: 'My leads' }} />
       <Tabs.Screen name="more" options={{ title: 'More' }} />
+      <Tabs.Screen name="quick-capture" options={{ href: null }} />
     </Tabs>
   );
 }

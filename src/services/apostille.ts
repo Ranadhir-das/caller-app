@@ -1,8 +1,9 @@
+import { isCallerCapable } from './capabilities';
 import { apiRequest } from './api';
 import type { LoggedInUser } from './auth';
 
 export const canUseApostille = (user: LoggedInUser | null | undefined) =>
-  user?.role === 'CALLER' && user.can_manage_apostille_leads === true && !user.needs_onboarding;
+  isCallerCapable(user) && user?.can_manage_apostille_leads === true && !user?.needs_onboarding;
 
 export type ApostilleInput = {
   name: string; phone: string; country: string; document_name: string; number_of_documents: number;

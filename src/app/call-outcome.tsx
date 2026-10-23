@@ -2,7 +2,7 @@ import { InterestedCourseSteps } from '@/components/InterestedCourseSteps';
 import { OutcomeWhatsAppEditor } from '@/components/OutcomeWhatsAppEditor';
 import { ForwardCounselorModal } from '@/components/ForwardCounselorModal';
 import { canOfferForward } from '@/services/counselor';
-import { courseLabel, allowsContact, completeInterestedSelection } from '@/services/courses';
+import { courseLabel, allowsContact, completeInterestedSelection, COURSES, validCourse } from '@/services/courses';
 import { launchWhatsAppHandoff } from '@/services/whatsapp';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { useDialerSession } from '@/context/DialerSessionContext';
@@ -133,6 +133,11 @@ export default function CallOutcomeScreen() {
   const [whatsappMessage, setWhatsappMessage] = useState('');
   const [whatsappTemplate, setWhatsappTemplate] = useState<number>();
 
+  const [saveAsLead, setSaveAsLead] = useState(!draft?.leadId);
+  const [studentName, setStudentName] = useState(draft?.studentName || (draft && draft.name !== draft.phone ? draft.name : '') || '');
+  const [prefCourse, setPrefCourse] = useState(draft?.preferredCourse || 'MBBS');
+  const [prefCustomCourse, setPrefCustomCourse] = useState(draft?.preferredCourseCustom || '');
+
 
   const isCaller = (user?.role || '').toUpperCase() === 'CALLER';
   const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
@@ -179,6 +184,10 @@ export default function CallOutcomeScreen() {
           setAdmissionYear(String(saved.payload?.expected_admission_year || saved.admissionYear || ''));
           setWhatsappMessage(saved.payload?.whatsapp_message || saved.whatsappMessage || '');
           setWhatsappTemplate(saved.payload?.whatsapp_template || saved.whatsappTemplate);
+          setStudentName(saved.studentName || (saved.name !== saved.phone ? saved.name : '') || '');
+          setPrefCourse(saved.preferredCourse || saved.selectedCourse || 'MBBS');
+          setPrefCustomCourse(saved.preferredCourseCustom || saved.customCourse || '');
+          setSaveAsLead(saved.createLead ?? !saved.leadId);
           if (saved.payload?.callback_at || saved.callbackAt) {
             setFollowUpDate(new Date(saved.payload?.callback_at || saved.callbackAt!));
             setHasSelectedDate(true);
@@ -203,10 +212,11 @@ export default function CallOutcomeScreen() {
       void patchCallDraft(draft.userId, draft.id, {
         outcome: selectedOutcome, notes, callbackAt: followUpDate?.toISOString(),
         selectedCourse, customCourse, admissionYear, whatsappMessage, whatsappTemplate,
+        createLead: saveAsLead, studentName, preferredCourse: prefCourse, preferredCourseCustom: prefCustomCourse,
       }).catch(error => { setDraftError('Unable to save edits on this device. Keep this screen open and retry Save.'); console.warn(error); });
     }, 300);
     return () => clearTimeout(timer);
-  }, [loaded, selectedOutcome, notes, followUpDate, selectedCourse, customCourse, admissionYear, whatsappMessage, whatsappTemplate, draft?.payload, savedCallId, saving]);
+  }, [loaded, selectedOutcome, notes, followUpDate, selectedCourse, customCourse, admissionYear, whatsappMessage, whatsappTemplate, saveAsLead, studentName, prefCourse, prefCustomCourse, draft?.payload, savedCallId, saving]);
 
   if (!loaded || !target || !draft) {
     return <SafeAreaView style={styles.container}>
@@ -299,8 +309,10 @@ export default function CallOutcomeScreen() {
   };
 
   const interestedReady = apostille || completeInterestedSelection(selectedCourse, customCourse, admissionYear);
+  const newLeadValid = !saveAsLead || !!draft.leadId || (studentName.trim().length > 0 &&
+    (selectedOutcome === 'interested' ? interestedReady : validCourse(prefCourse, prefCustomCourse)));
   const canSave = !!selectedOutcome && !saving && !savedCallId && !courseSteps &&
-    (selectedOutcome !== 'interested' || interestedReady);
+    (selectedOutcome !== 'interested' || interestedReady) && newLeadValid;
 
   const finish = () => {
     if (apostille && draft.leadId) { router.replace(`/apostille-lead?id=${draft.leadId}` as never); return; }
@@ -347,6 +359,11 @@ export default function CallOutcomeScreen() {
         outcome: outcomeToBackend[selectedOutcome], notes, course: selectedCourse,
         customCourse, year: admissionYear, callbackAt: followUpDate?.toISOString(),
         whatsappMessage, whatsappTemplate,
+        createLead: !draft.leadId && saveAsLead,
+        studentName: studentName.trim(),
+        preferredCourse: selectedOutcome === 'interested' ? selectedCourse : prefCourse,
+        preferredCourseCustom: selectedOutcome === 'interested' ? customCourse : prefCustomCourse,
+        leadSource: 'Direct Call',
       });
       // Persist the exact request before sending. Network retries reuse its event ID.
       await patchCallDraft(draft.userId, draft.id, {
@@ -365,6 +382,7 @@ export default function CallOutcomeScreen() {
       followup: { scheduled_at: string; status: string } | null;
       selected_course?: string | null; selected_course_custom?: string; expected_admission_year?: number | null;
       course_classification?: string; outcome_points?: number; whatsapp_message?: string;
+      lead_created?: boolean;
     };
     try {
       saved = await apiRequest('/calls/', { method: 'POST', body: payload, token });
@@ -409,9 +427,23 @@ export default function CallOutcomeScreen() {
 
     // Forwarding is an optional extra step; it never alters the saved outcome, course, year or points.
     const savedLeadId = saved.lead;
-    const proceed = !apostille && canOfferForward(user, payload.outcome, savedLeadId) && savedLeadId != null
-      ? () => setForwardLeadId(savedLeadId)
-      : finish;
+    const isNewLead = Boolean(saved.lead_created);
+    const finishWithLead = () => {
+      if (savedLeadId) {
+        router.replace({ pathname: '/lead-details', params: { id: String(savedLeadId) } });
+      } else {
+        finish();
+      }
+    };
+    const proceed = isNewLead
+      ? finishWithLead
+      : (!apostille && canOfferForward(user, payload.outcome, savedLeadId) && savedLeadId != null
+          ? () => setForwardLeadId(savedLeadId)
+          : finish);
+
+    const successMsg = isNewLead
+      ? `${studentName.trim() || 'Student'} saved and added to your assigned leads.`
+      : 'Your call outcome has been saved successfully.';
 
     if (payload.whatsapp_message) {
       Alert.alert('Outcome saved', 'Open your prepared message in WhatsApp? You must press Send there.', [
@@ -426,7 +458,15 @@ export default function CallOutcomeScreen() {
         })(); } },
       ], { cancelable: false });
     } else {
-      Alert.alert('Outcome saved', 'Your call outcome has been saved successfully.', [{ text: 'Continue', onPress: proceed }], { cancelable: false });
+      Alert.alert(
+        isNewLead ? 'Lead Created Successfully' : 'Outcome saved',
+        successMsg,
+        [
+          ...(savedLeadId ? [{ text: 'View Lead', onPress: finishWithLead }] : []),
+          { text: 'Continue', onPress: proceed },
+        ],
+        { cancelable: false }
+      );
     }
   };
 
@@ -471,6 +511,74 @@ export default function CallOutcomeScreen() {
             </Text>
           </View>
         </View>
+
+        {!draft.leadId && (
+          <View style={styles.newLeadCard}>
+            <View style={styles.newLeadToggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.newLeadToggleTitle}>Save as New Lead</Text>
+                <Text style={styles.newLeadToggleSubtitle}>
+                  Add this student to your CRM leads list
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: saveAsLead }}
+                onPress={() => setSaveAsLead(!saveAsLead)}
+                style={[styles.checkbox, saveAsLead && styles.checkboxActive]}
+              >
+                {saveAsLead ? <Text style={styles.checkboxCheck}>✓</Text> : null}
+              </Pressable>
+            </View>
+
+            {saveAsLead && (
+              <View style={styles.newLeadForm}>
+                <Text style={styles.leadInputLabel}>Student Name *</Text>
+                <TextInput
+                  style={styles.leadTextInput}
+                  placeholder="Enter student's full name"
+                  placeholderTextColor={colors.muted}
+                  value={studentName}
+                  onChangeText={setStudentName}
+                  editable={!saving && !savedCallId && !draft.payload}
+                />
+
+                {selectedOutcome !== 'interested' && (
+                  <>
+                    <Text style={[styles.leadInputLabel, { marginTop: 12 }]}>Preferred Course *</Text>
+                    <View style={styles.courseChipGrid}>
+                      {COURSES.map(([cCode, cLabel]) => {
+                        const isCourseSelected = prefCourse === cCode;
+                        return (
+                          <Pressable
+                            key={cCode}
+                            style={[styles.courseChip, isCourseSelected && styles.courseChipActive]}
+                            onPress={() => setPrefCourse(cCode)}
+                            disabled={saving || !!savedCallId || !!draft.payload}
+                          >
+                            <Text style={[styles.courseChipText, isCourseSelected && styles.courseChipTextActive]}>
+                              {cLabel}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    {prefCourse === 'OTHERS' && (
+                      <TextInput
+                        style={[styles.leadTextInput, { marginTop: 8 }]}
+                        placeholder="Enter custom course name..."
+                        placeholderTextColor={colors.muted}
+                        value={prefCustomCourse}
+                        onChangeText={setPrefCustomCourse}
+                        editable={!saving && !savedCallId && !draft.payload}
+                      />
+                    )}
+                  </>
+                )}
+              </View>
+            )}
+          </View>
+        )}
 
         {draftError ? <Text style={styles.errorTitle}>{draftError}</Text> : null}
         <Text style={styles.phone}>{draft.leadId ? 'Lead Call' : 'Direct Call'} • {draft.durationSeconds ?? 0}s</Text>
@@ -745,6 +853,97 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     width: 38,
   },
 
+  newLeadCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  newLeadToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  newLeadToggleTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  newLeadToggleSubtitle: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  checkbox: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  checkboxActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkboxCheck: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  newLeadForm: {
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 14,
+  },
+  leadInputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  leadTextInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.text,
+  },
+  courseChipGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  courseChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  courseChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  courseChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  courseChipTextActive: {
+    color: '#ffffff',
+  },
   leadCard: {
     backgroundColor: colors.surface,
     borderRadius: 16,

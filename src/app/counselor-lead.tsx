@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  KeyboardAvoidingView,
   Modal,
   PermissionsAndroid,
   Platform,
@@ -553,46 +554,58 @@ export default function CounselorLeadDetailScreen() {
 
       {/* Request Admission Modal */}
       <Modal visible={showAdmissionModal} transparent animationType="slide" onRequestClose={() => setShowAdmissionModal(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Request Admission Review</Text>
-            <Text style={styles.modalSubtitle}>
-              Ask an Administrator or Manager to review {lead.name} for admission. Note: Submitting does NOT finalize the admission.
-            </Text>
-
-            <TextInput
-              value={admissionMessage}
-              onChangeText={setAdmissionMessage}
-              placeholder="Add details for the reviewer (e.g. documents verified, eligibility checked)..."
-              placeholderTextColor={colors.placeholder}
-              multiline
-              numberOfLines={4}
-              style={styles.modalInput}
-            />
-
-            <View style={styles.modalActions}>
-              <Pressable
-                accessibilityRole="button"
-                style={[styles.modalBtn, styles.modalCancelBtn]}
-                onPress={() => setShowAdmissionModal(false)}
-                disabled={submittingAdmission}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdmissionModal(false)} />
+            <View style={styles.modalSheet}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: 14 }}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Submit Request"
-                style={[styles.modalBtn, styles.modalSubmitBtn]}
-                onPress={handleRequestAdmission}
-                disabled={submittingAdmission}
-              >
-                <Text style={styles.modalSubmitText}>
-                  {submittingAdmission ? 'Submitting...' : 'Submit Request'}
+                <Text style={styles.modalTitle}>Request Admission Review</Text>
+                <Text style={styles.modalSubtitle}>
+                  Ask an Administrator or Manager to review {lead.name} for admission. Note: Submitting does NOT finalize the admission.
                 </Text>
-              </Pressable>
+
+                <TextInput
+                  value={admissionMessage}
+                  onChangeText={setAdmissionMessage}
+                  placeholder="Add details for the reviewer (e.g. documents verified, eligibility checked)..."
+                  placeholderTextColor={colors.placeholder}
+                  multiline
+                  numberOfLines={4}
+                  style={styles.modalInput}
+                />
+
+                <View style={styles.modalActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    style={[styles.modalBtn, styles.modalCancelBtn]}
+                    onPress={() => setShowAdmissionModal(false)}
+                    disabled={submittingAdmission}
+                  >
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Submit Request"
+                    style={[styles.modalBtn, styles.modalSubmitBtn]}
+                    onPress={handleRequestAdmission}
+                    disabled={submittingAdmission}
+                  >
+                    <Text style={styles.modalSubmitText}>
+                      {submittingAdmission ? 'Submitting...' : 'Submit Request'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </ScrollView>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -770,7 +783,7 @@ const createStyles = (c: AppColors) => {
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
       padding: 20,
-      gap: 14,
+      maxHeight: '85%',
     },
     modalTitle: { color: c.text, fontSize: 18, fontWeight: '800' },
     modalSubtitle: { color: c.muted, fontSize: 13, lineHeight: 18 },

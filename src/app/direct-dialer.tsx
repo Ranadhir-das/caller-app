@@ -271,6 +271,19 @@ export default function DirectDialerScreen() {
             </View>
           ))}
 
+          {/* Quick Action: Register Incoming Enquiry */}
+          <Pressable
+            style={styles.incomingEnquiryButton}
+            onPress={() =>
+              router.push({
+                pathname: '/incoming-enquiry' as never,
+                params: phone.length >= 7 ? { phone_number: phone } : {},
+              })
+            }
+          >
+            <Text style={styles.incomingEnquiryButtonText}>📥 Add Incoming Enquiry</Text>
+          </Pressable>
+
           {/* Action Row: Green Call Button */}
           <View style={styles.callRow}>
             <Pressable
@@ -769,5 +782,22 @@ const createStyles = (colors: AppColors) =>
       color: colors.placeholder,
       textAlign: 'center',
       paddingVertical: 14,
+    },
+    incomingEnquiryButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: 10,
+      marginHorizontal: 20,
+      marginBottom: 10,
+    },
+    incomingEnquiryButtonText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.primary,
     },
   });

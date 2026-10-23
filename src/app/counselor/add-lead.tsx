@@ -230,6 +230,18 @@ export default function CounselorAddLeadScreen() {
             </View>
           ) : null}
 
+          {/* Quick Capture Shortcut Banner */}
+          <Pressable
+            style={({ pressed }) => [styles.quickCaptureBanner, pressed && { opacity: 0.85 }]}
+            onPress={() => router.push('/counselor/quick-capture' as never)}
+          >
+            <Text style={styles.quickCaptureEmoji}>📷</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.quickCaptureTitle}>Have a screenshot with phone numbers?</Text>
+              <Text style={styles.quickCaptureSubtitle}>Use Quick Capture to scan and import leads automatically ➔</Text>
+            </View>
+          </Pressable>
+
           {/* Primary Required Info Card */}
           <View style={styles.card}>
             <Text style={styles.cardHeader}>STUDENT CONTACT DETAILS</Text>
@@ -741,6 +753,31 @@ const createStyles = (c: AppColors) => {
       gap: 10,
     },
     pressed: { opacity: 0.8 },
+    quickCaptureBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: COUNSELOR_TEAL + '60',
+      borderRadius: 14,
+      padding: 14,
+      gap: 12,
+      marginBottom: 8,
+    },
+    quickCaptureEmoji: {
+      fontSize: 22,
+    },
+    quickCaptureTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: c.text,
+    },
+    quickCaptureSubtitle: {
+      fontSize: 12,
+      color: COUNSELOR_TEAL,
+      fontWeight: '600',
+      marginTop: 2,
+    },
   });
 };
 

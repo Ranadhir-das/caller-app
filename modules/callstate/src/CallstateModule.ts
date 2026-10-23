@@ -8,6 +8,7 @@ export type CallState =
 
 export type CallStateEvent = {
   state: CallState;
+  phoneNumber?: string;
 };
 
 declare class CallstateModule extends NativeModule<{

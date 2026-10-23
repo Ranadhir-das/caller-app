@@ -74,6 +74,11 @@ export default function LeadsScreen() {
   const [checkedNotification, setCheckedNotification] = useState<string | null>(null);
   const warnedNotification = useRef<string | null>(null);
   useEffect(() => {
+    if (pushParams.tab === 'assigned') {
+      setActiveTab('assigned');
+    }
+  }, [pushParams.tab]);
+  useEffect(() => {
     if (pushParams.tab !== 'available' || !pushParams.notificationId) return;
     let active = true;
     setActiveTab('available');
@@ -210,7 +215,7 @@ export default function LeadsScreen() {
         style={styles.leadCard}
         onPress={() => {
           router.push({
-            pathname: '/lead-details',
+            pathname: '/lead-details' as never,
             params: {
               id: item.id,
             },
@@ -352,10 +357,21 @@ export default function LeadsScreen() {
           </Text>
         </View>
 
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>
-            {activeTab === 'assigned' ? leads.length : availableLeads.length}
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable
+            style={styles.addEnquiryButton}
+            onPress={() => router.push('/incoming-enquiry' as never)}
+            accessibilityRole="button"
+            accessibilityLabel="Add Incoming Enquiry"
+          >
+            <Text style={styles.addEnquiryButtonText}>+ Enquiry</Text>
+          </Pressable>
+
+          <View style={styles.countBadge}>
+            <Text style={styles.countText}>
+              {activeTab === 'assigned' ? leads.length : availableLeads.length}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -1170,5 +1186,20 @@ const createStyles = (colors: AppColors) =>
       color: colors.onPrimary,
       fontSize: 13,
       fontWeight: '600',
+    },
+
+    addEnquiryButton: {
+      backgroundColor: colors.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    addEnquiryButtonText: {
+      color: colors.onPrimary,
+      fontSize: 12,
+      fontWeight: '700',
     },
   });

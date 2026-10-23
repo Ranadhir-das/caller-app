@@ -185,11 +185,14 @@ class CallstateModule : Module() {
           // Recording errors are contained in the service and cannot block call events.
           CallRecordingService.onCallState(state)
 
+          val eventData = mutableMapOf<String, Any>("state" to callState)
+          if (!phoneNumber.isNullOrEmpty()) {
+            eventData["phoneNumber"] = phoneNumber
+          }
+
           sendEvent(
             "onCallStateChanged",
-            mapOf(
-              "state" to callState
-            )
+            eventData
           )
         }
       }

@@ -1,3 +1,4 @@
+import { isCallerCapable, isCounselorCapable } from '@/services/capabilities';
 import { useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { setupNotificationListeners } from '@/services/notifications';
@@ -10,8 +11,8 @@ export function PushNotificationRegistration() {
   const { token, user, loading } = useAuth();
   const userId = user?.id;
   const navigation = useRootNavigationState();
-  const canOpenLead = user?.role === 'CALLER' && !user.needs_onboarding;
-  const canOpenCounselor = user?.role === 'COUNSELOR' && !user.needs_onboarding;
+  const canOpenLead = isCallerCapable(user) && !user?.needs_onboarding;
+  const canOpenCounselor = isCounselorCapable(user) && !user?.needs_onboarding;
   useEffect(() => {
     if (loading || !token || userId == null || !navigation?.key) return;
     let disposed = false;

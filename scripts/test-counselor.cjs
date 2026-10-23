@@ -11,6 +11,15 @@ const context = {
   exports: {},
   require: (mod) => {
     if (mod === './api') return { apiRequest: async () => ({}) };
+    if (mod === './capabilities') {
+      const capSource = fs.readFileSync(path.join(root, 'src/services/capabilities.ts'), 'utf8');
+      const capContext = { exports: {} };
+      vm.runInNewContext(
+        ts.transpileModule(capSource, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
+        capContext
+      );
+      return capContext.exports;
+    }
     throw new Error(`Unexpected import: ${mod}`);
   },
 };
@@ -179,9 +188,12 @@ test('counselor routes remain unchanged', () => {
   assert.deepEqual([...COUNSELOR_ROUTES], [
     '/counselor',
     '/counselor/index',
+    '/counselor/add-lead',
+    '/counselor/quick-capture',
     '/counselor/leads',
     '/counselor/more',
     '/counselor-lead',
     '/counselor-note',
+    '/counselor-created-lead',
   ]);
 });

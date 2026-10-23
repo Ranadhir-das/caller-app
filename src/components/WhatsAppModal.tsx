@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -123,130 +125,151 @@ export function WhatsAppModal({
       transparent
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>WhatsApp Student</Text>
-              <Text style={styles.subtitle}>Prefilled manual message handoff</Text>
-            </View>
-            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
-              <Text style={styles.closeText}>✕</Text>
-            </Pressable>
-          </View>
-
-          {/* Student details */}
-          <View style={styles.infoBox}>
-            <View style={styles.infoCol}>
-              <Text style={styles.infoLabel}>Student</Text>
-              <Text style={styles.infoVal}>{leadName}</Text>
-            </View>
-            <View style={styles.infoCol}>
-              <Text style={styles.infoLabel}>Phone</Text>
-              <Text style={styles.infoVal}>{leadPhone}</Text>
-            </View>
-          </View>
-
-          {/* Template pills */}
-          <Text style={styles.sectionHeading}>Choose Template</Text>
-          {loadingTemplates ? (
-            <ActivityIndicator style={{ marginVertical: 10 }} />
-          ) : (
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.overlay}>
+          <Pressable style={styles.backdropPressable} onPress={onClose} />
+          <View style={styles.sheet}>
             <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.templateList}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.sheetScroll}
             >
-              <Pressable
-                style={[
-                  styles.pill,
-                  selectedTemplateId === null && styles.pillActive,
-                ]}
-                onPress={() => handleSelectTemplate(null)}
-              >
-                <Text
-                  style={[
-                    styles.pillText,
-                    selectedTemplateId === null && styles.pillTextActive,
-                  ]}
+              {/* Header */}
+              <View style={styles.header}>
+                <View>
+                  <Text style={styles.title}>WhatsApp Student</Text>
+                  <Text style={styles.subtitle}>Prefilled manual message handoff</Text>
+                </View>
+                <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
+                  <Text style={styles.closeText}>✕</Text>
+                </Pressable>
+              </View>
+
+              {/* Student details */}
+              <View style={styles.infoBox}>
+                <View style={styles.infoCol}>
+                  <Text style={styles.infoLabel}>Student</Text>
+                  <Text style={styles.infoVal}>{leadName}</Text>
+                </View>
+                <View style={styles.infoCol}>
+                  <Text style={styles.infoLabel}>Phone</Text>
+                  <Text style={styles.infoVal}>{leadPhone}</Text>
+                </View>
+              </View>
+
+              {/* Template pills */}
+              <Text style={styles.sectionHeading}>Choose Template</Text>
+              {loadingTemplates ? (
+                <ActivityIndicator style={{ marginVertical: 10 }} />
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.templateList}
                 >
-                  Custom
-                </Text>
-              </Pressable>
-              {templates.map((tpl) => (
-                <Pressable
-                  key={tpl.id}
-                  style={[
-                    styles.pill,
-                    selectedTemplateId === tpl.id && styles.pillActive,
-                  ]}
-                  onPress={() => handleSelectTemplate(tpl)}
-                >
-                  <Text
+                  <Pressable
                     style={[
-                      styles.pillText,
-                      selectedTemplateId === tpl.id && styles.pillTextActive,
+                      styles.pill,
+                      selectedTemplateId === null && styles.pillActive,
                     ]}
+                    onPress={() => handleSelectTemplate(null)}
                   >
-                    {tpl.title}
+                    <Text
+                      style={[
+                        styles.pillText,
+                        selectedTemplateId === null && styles.pillTextActive,
+                      ]}
+                    >
+                      Custom
+                    </Text>
+                  </Pressable>
+                  {templates.map((tpl) => (
+                    <Pressable
+                      key={tpl.id}
+                      style={[
+                        styles.pill,
+                        selectedTemplateId === tpl.id && styles.pillActive,
+                      ]}
+                      onPress={() => handleSelectTemplate(tpl)}
+                    >
+                      <Text
+                        style={[
+                          styles.pillText,
+                          selectedTemplateId === tpl.id && styles.pillTextActive,
+                        ]}
+                      >
+                        {tpl.title}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* Message input */}
+              <Text style={styles.sectionHeading}>Message (Editable)</Text>
+              <NoteInputWithVoice
+                value={message}
+                onChangeText={setMessage}
+                placeholder="Type your WhatsApp message (tap mic to speak)..."
+                multiline
+                numberOfLines={4}
+              />
+
+              <Text style={styles.disclaimer}>
+                ℹ️ WhatsApp will open with this message prefilled. You must press Send in WhatsApp.
+              </Text>
+
+              {/* Actions */}
+              <View style={styles.actions}>
+                <Pressable
+                  style={styles.cancelBtn}
+                  onPress={onClose}
+                  disabled={submitting}
+                >
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.openBtn, submitting && { opacity: 0.6 }]}
+                  onPress={handleOpenWhatsApp}
+                  disabled={submitting}
+                >
+                  <Text style={styles.openText}>
+                    {submitting ? "Opening..." : "💬 Open WhatsApp"}
                   </Text>
                 </Pressable>
-              ))}
+              </View>
             </ScrollView>
-          )}
-
-          {/* Message input */}
-          <Text style={styles.sectionHeading}>Message (Editable)</Text>
-          <NoteInputWithVoice
-            value={message}
-            onChangeText={setMessage}
-            placeholder="Type your WhatsApp message (tap mic to speak)..."
-            multiline
-            numberOfLines={4}
-          />
-
-          <Text style={styles.disclaimer}>
-            ℹ️ WhatsApp will open with this message prefilled. You must press Send in WhatsApp.
-          </Text>
-
-          {/* Actions */}
-          <View style={styles.actions}>
-            <Pressable
-              style={styles.cancelBtn}
-              onPress={onClose}
-              disabled={submitting}
-            >
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.openBtn, submitting && { opacity: 0.6 }]}
-              onPress={handleOpenWhatsApp}
-              disabled={submitting}
-            >
-              <Text style={styles.openText}>
-                {submitting ? "Opening..." : "💬 Open WhatsApp"}
-              </Text>
-            </Pressable>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const makeStyles = (c: AppColors) =>
   StyleSheet.create({
+    keyboardAvoid: {
+      flex: 1,
+    },
     overlay: {
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.6)",
       justifyContent: "flex-end",
     },
+    backdropPressable: {
+      ...StyleSheet.absoluteFill,
+    },
     sheet: {
       backgroundColor: c.surface,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
+      maxHeight: "85%",
+    },
+    sheetScroll: {
       padding: 20,
       gap: 12,
     },

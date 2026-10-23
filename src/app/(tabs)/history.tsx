@@ -363,18 +363,30 @@ export default function HistoryScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <View>
+          <Text style={styles.title}>
+            Call History
+          </Text>
 
-      <Text style={styles.title}>
-        Call History
-      </Text>
+          <Text style={styles.subtitle}>
+            {callHistory.length}{' '}
+            {callHistory.length === 1
+              ? 'call'
+              : 'calls'}{' '}
+            recorded
+          </Text>
+        </View>
 
-      <Text style={styles.subtitle}>
-        {callHistory.length}{' '}
-        {callHistory.length === 1
-          ? 'call'
-          : 'calls'}{' '}
-        recorded
-      </Text>
+        <Pressable
+          style={styles.addEnquiryButton}
+          onPress={() => router.push('/incoming-enquiry' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Add Incoming Enquiry"
+        >
+          <Text style={styles.addEnquiryButtonText}>+ Enquiry</Text>
+        </Pressable>
+      </View>
 
       {/* Search */}
 
@@ -822,5 +834,20 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     color: colors.muted,
     textAlign: 'center',
     lineHeight: 20,
+  },
+
+  addEnquiryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  addEnquiryButtonText: {
+    color: colors.onPrimary,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

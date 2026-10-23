@@ -3,9 +3,15 @@ import { router, useFocusEffect } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
-import { useAppStyles } from '@/context/AppThemeContext';
+import { useAppStyles, useAppTheme } from '@/context/AppThemeContext';
 import { CounselorLeadRow, createCounselorStyles, relativeDate } from '@/components/counselor/ui';
-import { COUNSELOR_TEAL, counselorApi, type CounselorDashboard } from '@/services/counselor';
+import {
+  COUNSELOR_TEAL,
+  COUNSELOR_TEAL_SOFT_DARK,
+  COUNSELOR_TEAL_SOFT_LIGHT,
+  counselorApi,
+  type CounselorDashboard,
+} from '@/services/counselor';
 
 function greeting() {
   const hour = new Date().getHours();
@@ -14,6 +20,8 @@ function greeting() {
 
 export default function CounselorDashboardScreen() {
   const styles = useAppStyles(createCounselorStyles);
+  const { mode } = useAppTheme();
+  const isDark = mode === 'dark';
   const { token, user } = useAuth();
   const [data, setData] = useState<CounselorDashboard | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -50,6 +58,26 @@ export default function CounselorDashboardScreen() {
           <Text style={styles.heroTitle}>{greeting()}, {(data?.counselor.name || user?.name || user?.username || '').split(' ')[0]}</Text>
           <Text style={styles.heroSubtitle}>Guide each student calmly — review the caller's notes, talk, and record your counselling notes.</Text>
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Quick Capture leads from screenshot"
+          style={({ pressed }) => [
+            styles.createLeadBanner,
+            { backgroundColor: isDark ? COUNSELOR_TEAL_SOFT_DARK : COUNSELOR_TEAL_SOFT_LIGHT, borderColor: COUNSELOR_TEAL + '50' },
+            pressed && styles.pressed,
+          ]}
+          onPress={() => router.push('/counselor/quick-capture' as never)}
+        >
+          <View style={[styles.createLeadIcon, { backgroundColor: COUNSELOR_TEAL }]}>
+            <Text style={{ fontSize: 16, color: '#fff' }}>📷</Text>
+          </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={[styles.createLeadTitle, { color: COUNSELOR_TEAL }]}>Quick Capture (Screenshot)</Text>
+            <Text style={styles.createLeadSubtitle}>Upload screenshot or share to Vaani to auto-detect numbers</Text>
+          </View>
+          <Text style={[styles.createLeadArrow, { color: COUNSELOR_TEAL }]}>➔</Text>
+        </Pressable>
 
         <Pressable
           accessibilityRole="button"

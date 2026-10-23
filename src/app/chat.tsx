@@ -383,6 +383,8 @@ export default function ChatScreen() {
             data={messages}
             keyExtractor={(m) => String(m.id)}
             contentContainerStyle={styles.thread}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
             renderItem={({ item }) => {
               const isMine = item.sender_id === user?.id;
               return (
