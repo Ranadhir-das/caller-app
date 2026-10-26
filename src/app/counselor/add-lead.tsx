@@ -15,6 +15,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
+import { VectorIcon } from '@/components/VectorIcon';
 import {
   COUNSELOR_TEAL,
   COUNSELOR_TEAL_SOFT_DARK,
@@ -40,6 +41,7 @@ const NEET_OPTIONS = ['Qualified', 'Not Qualified', 'Appearing', 'Not Attempted'
 export default function CounselorAddLeadScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
+  const isDark = colors.background === '#070B14';
   const styles = useAppStyles(createStyles);
   const { token, user } = useAuth();
 
@@ -230,17 +232,37 @@ export default function CounselorAddLeadScreen() {
             </View>
           ) : null}
 
-          {/* Quick Capture Shortcut Banner */}
-          <Pressable
-            style={({ pressed }) => [styles.quickCaptureBanner, pressed && { opacity: 0.85 }]}
-            onPress={() => router.push('/counselor/quick-capture' as never)}
-          >
-            <Text style={styles.quickCaptureEmoji}>📷</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.quickCaptureTitle}>Have a screenshot with phone numbers?</Text>
-              <Text style={styles.quickCaptureSubtitle}>Use Quick Capture to scan and import leads automatically ➔</Text>
+          {/* Method Selection: Two distinct, clear intake options */}
+          <View style={styles.methodSelectorRow}>
+            <View style={[styles.methodCard, styles.methodCardActive]}>
+              <View style={[styles.methodIconBox, { backgroundColor: COUNSELOR_TEAL }]}>
+                <VectorIcon name="phone" color="#FFFFFF" size={18} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.methodTitleActive}>Add Lead by Number</Text>
+                  <View style={styles.activeDot} />
+                </View>
+                <Text style={styles.methodSubtitle}>Type student phone & details directly</Text>
+              </View>
             </View>
-          </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Switch to Quick Capture screenshot intake"
+              style={({ pressed }) => [styles.methodCard, pressed && { opacity: 0.8 }]}
+              onPress={() => router.push('/counselor/quick-capture' as never)}
+            >
+              <View style={[styles.methodIconBox, { backgroundColor: isDark ? COUNSELOR_TEAL_SOFT_DARK : COUNSELOR_TEAL_SOFT_LIGHT }]}>
+                <VectorIcon name="camera" color={COUNSELOR_TEAL} size={18} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.methodTitle}>Quick Capture</Text>
+                <Text style={styles.methodSubtitle}>Scan screenshots to extract numbers</Text>
+              </View>
+              <VectorIcon name="chevron-right" color={colors.muted} size={16} />
+            </Pressable>
+          </View>
 
           {/* Primary Required Info Card */}
           <View style={styles.card}>
@@ -753,30 +775,52 @@ const createStyles = (c: AppColors) => {
       gap: 10,
     },
     pressed: { opacity: 0.8 },
-    quickCaptureBanner: {
+    methodSelectorRow: {
+      gap: 10,
+      marginBottom: 10,
+    },
+    methodCard: {
       flexDirection: 'row',
       alignItems: 'center',
+      gap: 12,
+      padding: 14,
+      borderRadius: 16,
       backgroundColor: c.surface,
       borderWidth: 1,
-      borderColor: COUNSELOR_TEAL + '60',
-      borderRadius: 14,
-      padding: 14,
-      gap: 12,
-      marginBottom: 8,
+      borderColor: c.border,
     },
-    quickCaptureEmoji: {
-      fontSize: 22,
+    methodCardActive: {
+      backgroundColor: soft,
+      borderColor: COUNSELOR_TEAL,
+      borderWidth: 1.5,
     },
-    quickCaptureTitle: {
-      fontSize: 14,
-      fontWeight: '700',
+    methodIconBox: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    methodTitle: {
       color: c.text,
+      fontSize: 15,
+      fontWeight: '700',
     },
-    quickCaptureSubtitle: {
-      fontSize: 12,
+    methodTitleActive: {
       color: COUNSELOR_TEAL,
-      fontWeight: '600',
+      fontSize: 15,
+      fontWeight: '800',
+    },
+    methodSubtitle: {
+      color: c.muted,
+      fontSize: 12,
       marginTop: 2,
+    },
+    activeDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: COUNSELOR_TEAL,
     },
   });
 };

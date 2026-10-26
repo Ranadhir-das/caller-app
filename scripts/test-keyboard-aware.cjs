@@ -69,3 +69,17 @@ test('quick capture screen handles keyboard on both main scroll and caller list'
   const matches = source.match(/keyboardShouldPersistTaps="handled"/g);
   assert.ok(matches && matches.length >= 2, 'Must have keyboardShouldPersistTaps on both outer and inner lists');
 });
+
+// 9. WhatsAppModal Android soft keyboard & composer anchoring fix
+test('WhatsAppModal handles Android soft keyboard insets and anchors composer actions', () => {
+  const source = fs.readFileSync(path.join(root, 'src/components/WhatsAppModal.tsx'), 'utf8');
+  // Listens to Android keyboard events
+  assert.match(source, /Keyboard\.addListener\(\s*["']keyboardDidShow["']/);
+  assert.match(source, /Keyboard\.addListener\(\s*["']keyboardDidHide["']/);
+  // Sets paddingBottom on overlay for Android
+  assert.match(source, /Platform\.OS === ['"]android['"] && androidKeyboardHeight > 0/);
+  assert.match(source, /paddingBottom:\s*androidKeyboardHeight/);
+  // ActionsBar is pinned outside ScrollView
+  assert.match(source, /actionsBar/);
+  assert.match(source, /scrollToEnd/);
+});

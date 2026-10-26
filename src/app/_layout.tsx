@@ -28,6 +28,7 @@ import {
 } from '@/context/AuthContext';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { ActivityProvider } from '@/context/ActivityContext';
 import { DialerSessionProvider } from '@/context/DialerSessionContext';
 import { LeadProvider } from '@/context/LeadContext';
 import { COUNSELOR_ROUTES, isCounselor } from '@/services/counselor';
@@ -51,7 +52,7 @@ function AuthRedirect() {
 
     if (!user) return;
 
-    const employeeRoutes = ['/employee', '/employee/index', '/employee/attendance', '/employee/leave', '/employee/work', '/profile', '/settings', '/chat', '/notices', '/notifications', '/login'];
+    const employeeRoutes = ['/employee', '/employee/index', '/employee/attendance', '/employee/leave', '/employee/work', '/profile', '/settings', '/chat', '/notices', '/notifications', '/login', '/activity'];
     const canCaller = isCallerCapable(user) && !user.needs_onboarding;
     const canCounselor = isCounselorCapable(user) && !user.needs_onboarding;
 
@@ -118,6 +119,7 @@ function AppNavigator() {
           <Stack.Screen name="chat" />
           <Stack.Screen name="notices" />
           <Stack.Screen name="notifications" />
+          <Stack.Screen name="activity" />
         </Stack.Protected>
         <Stack.Protected guard={isCallerCapable(user) && !user?.needs_onboarding}>
           <Stack.Screen name="direct-dialer" />
@@ -179,8 +181,10 @@ function AccountData() {
   return (
     <LeadProvider key={user?.id ?? "signed-out"}>
       <DialerSessionProvider>
-        <AppNavigator />
-        {user ? <PeerAppreciationModal /> : null}
+        <ActivityProvider>
+          <AppNavigator />
+          {user ? <PeerAppreciationModal /> : null}
+        </ActivityProvider>
       </DialerSessionProvider>
     </LeadProvider>
   );

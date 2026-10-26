@@ -1,4 +1,5 @@
 import { CallerPointsCard } from '@/components/CallerPointsCard';
+import { ActivityStatusWidget } from '@/components/ActivityStatusWidget';
 import { router } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,6 +28,7 @@ export default function EmployeeHomeScreen() {
           <View style={styles.chevron} />
         </Pressable>
       <CallerPointsCard />
+      <ActivityStatusWidget />
         {isDualRole(user) && !user?.needs_onboarding && (
           <View style={styles.card} testID="dual-role-workspace-switcher">
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -71,6 +73,11 @@ export default function EmployeeHomeScreen() {
             <View style={styles.actionIcon}><Text style={styles.actionIconText}>🔔</Text></View>
             <Text style={styles.actionTitle}>Notifications{unread ? ` (${unreadBadge(unread)})` : ''}</Text>
             <Text style={styles.actionSubtitle}>Team and app updates</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/activity' as never)}>
+            <View style={styles.actionIcon}><Text style={styles.actionIconText}>⏱️</Text></View>
+            <Text style={styles.actionTitle}>Work Sessions</Text>
+            <Text style={styles.actionSubtitle}>Activity & history</Text>
           </Pressable>
           {isCallerCapable(user) && !user?.needs_onboarding && (
             <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/direct-dialer')}>

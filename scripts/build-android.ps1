@@ -51,7 +51,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Android version sync failed with exit code $LASTEXITCODE" }
 
     $gradleTask = if ($Mode -eq 'Production') { 'assembleRelease' } else { 'assembleDebug' }
+    $prevAction = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & .\android\gradlew.bat -p android $gradleTask -PreactNativeArchitectures=arm64-v8a --max-workers=2 --console=plain
+    $ErrorActionPreference = $prevAction
     if ($LASTEXITCODE -ne 0) { throw "Android build failed with exit code $LASTEXITCODE" }
     $artifact = if ($Mode -eq 'Production') { 'release\app-release.apk' } else { 'debug\app-debug.apk' }
     Write-Output (Join-Path $projectDirectory "android\app\build\outputs\apk\$artifact")

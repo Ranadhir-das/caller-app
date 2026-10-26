@@ -77,3 +77,9 @@ example
 !.env.example
 /app.json.backup-*
 /expo-config-check.json
+ 
+*.log
+release/
+screen_*.png
+scripts/test_screenshot.png
+scripts/generate_test_image.py

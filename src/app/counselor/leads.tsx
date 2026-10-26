@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
@@ -17,17 +17,25 @@ import {
 } from '@/services/counselor';
 
 type TabSection = 'FORWARDED' | 'CREATED';
-type FilterType = 'ALL' | 'PENDING' | 'CONTACTED';
+type FilterType = 'ALL' | 'PENDING' | 'CONTACTED' | 'TODAY' | 'ADMISSION';
+
+function isContactedToday(iso?: string | null): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.toDateString() === new Date().toDateString();
+}
 
 export default function CounselorLeadsScreen() {
   const styles = useAppStyles(createCounselorStyles);
   const { colors } = useAppTheme();
   const { token } = useAuth();
+  const params = useLocalSearchParams<{ section?: TabSection; filter?: FilterType }>();
 
-  const [section, setSection] = useState<TabSection>('FORWARDED');
+  const [section, setSection] = useState<TabSection>(params.section || 'FORWARDED');
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FilterType>('ALL');
+  const [filter, setFilter] = useState<FilterType>(params.filter || 'ALL');
 
   // Forwarded leads state
   const [forwardedLeads, setForwardedLeads] = useState<CounselorLeadSummary[] | null>(null);
@@ -37,6 +45,12 @@ export default function CounselorLeadsScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+
+  // Handle route param changes when navigating from dashboard cards
+  useEffect(() => {
+    if (params.section) setSection(params.section);
+    if (params.filter) setFilter(params.filter);
+  }, [params.section, params.filter]);
 
   useEffect(() => {
     const timer = setTimeout(() => setQuery(search), 350);
@@ -88,10 +102,22 @@ export default function CounselorLeadsScreen() {
   const allCount = forwardedLeads?.length ?? 0;
   const pendingCount = (forwardedLeads || []).filter((l) => l.counselor_contact_status === 'PENDING').length;
   const contactedCount = (forwardedLeads || []).filter((l) => l.counselor_contact_status === 'CONTACTED').length;
+  const todayCount = (forwardedLeads || []).filter(
+    (l) => l.counselor_contact_status === 'CONTACTED' && isContactedToday(l.last_contacted_at)
+  ).length;
+  const admissionCount = (forwardedLeads || []).filter(
+    (l) => l.status && l.status.toUpperCase().includes('ADMISSION')
+  ).length;
 
   const filteredForwardedLeads = (forwardedLeads || []).filter((lead) => {
     if (filter === 'PENDING') return lead.counselor_contact_status === 'PENDING';
     if (filter === 'CONTACTED') return lead.counselor_contact_status === 'CONTACTED';
+    if (filter === 'TODAY') {
+      return lead.counselor_contact_status === 'CONTACTED' && isContactedToday(lead.last_contacted_at);
+    }
+    if (filter === 'ADMISSION') {
+      return lead.status && lead.status.toUpperCase().includes('ADMISSION');
+    }
     return true;
   });
 
@@ -153,7 +179,7 @@ export default function CounselorLeadsScreen() {
 
         {/* Filter row for Forwarded tab */}
         {section === 'FORWARDED' && (
-          <View style={styles.filterRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Show all ${allCount} leads`}
@@ -186,7 +212,31 @@ export default function CounselorLeadsScreen() {
                 Contacted ({contactedCount})
               </Text>
             </Pressable>
-          </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Show ${todayCount} contacted today`}
+              onPress={() => setFilter('TODAY')}
+              style={[styles.filterPill, filter === 'TODAY' && styles.filterPillActive]}
+            >
+              <Text style={[styles.filterPillText, filter === 'TODAY' && styles.filterPillTextActive]}>
+                Today ({todayCount})
+              </Text>
+            </Pressable>
+
+            {(admissionCount > 0 || filter === 'ADMISSION') && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${admissionCount} admission requests`}
+                onPress={() => setFilter('ADMISSION')}
+                style={[styles.filterPill, filter === 'ADMISSION' && styles.filterPillActive]}
+              >
+                <Text style={[styles.filterPillText, filter === 'ADMISSION' && styles.filterPillTextActive]}>
+                  Admissions ({admissionCount})
+                </Text>
+              </Pressable>
+            )}
+          </ScrollView>
         )}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -202,7 +252,11 @@ export default function CounselorLeadsScreen() {
                     ? 'All your forwarded leads have been contacted.'
                     : filter === 'CONTACTED'
                       ? 'No leads contacted yet. Call a student to begin.'
-                      : 'No leads forwarded to you yet.'}
+                      : filter === 'TODAY'
+                        ? 'No students contacted today yet.'
+                        : filter === 'ADMISSION'
+                          ? 'No admission requests recorded for your leads.'
+                          : 'No leads forwarded to you yet.'}
               </Text>
             ) : null}
             {filteredForwardedLeads.map((lead) => (

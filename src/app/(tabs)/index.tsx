@@ -1,6 +1,7 @@
 import { followUpCategory, isDueFollowUp } from '@/services/followUps';
 import { getStatusLabel } from '@/utils/status';
 import { CallerPointsCard } from '@/components/CallerPointsCard';
+import { ActivityStatusWidget } from '@/components/ActivityStatusWidget';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -118,6 +119,7 @@ export default function HomeScreen() {
       </View>
 
       <CallerPointsCard />
+      <ActivityStatusWidget />
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
           <Text style={styles.statNumber}>

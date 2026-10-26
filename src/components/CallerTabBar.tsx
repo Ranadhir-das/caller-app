@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Image, Keyboard, Platform, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import { useAppTheme } from '@/context/AppThemeContext';
+import { VectorIcon } from '@/components/VectorIcon';
 
 const BLUE = '#005DF2';
 const icons: Record<string, ImageSourcePropType> = {
@@ -16,6 +17,12 @@ const icons: Record<string, ImageSourcePropType> = {
 
 function TabIcon({ name, selected, accent = BLUE, inactive = '#A7C8FF' }: { name: string; selected: boolean; accent?: string; inactive?: string }) {
   const color = selected ? accent : inactive;
+  if (name === 'add-lead') {
+    return <VectorIcon name="user-plus" color={color} size={22} />;
+  }
+  if (name === 'quick-capture') {
+    return <VectorIcon name="camera" color={color} size={22} />;
+  }
   return <Image source={icons[name] ?? icons.more} resizeMode="contain" style={[styles.icon, { tintColor: color }]} />;
 }
 
@@ -67,11 +74,11 @@ export function CallerTabBar({ state, descriptors, navigation, insets, accent = 
 const styles = StyleSheet.create({
   footer: { paddingTop: 8 },
   bar: { width: '100%', maxWidth: 520, alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
-    backgroundColor: BLUE, borderRadius: 40, padding: 10, gap: 4, minHeight: 64 },
-  tab: { flex: 1, minHeight: 44, minWidth: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderRadius: 28, gap: 7, paddingHorizontal: 6 },
-  selected: { flex: 2.3, backgroundColor: '#FFFFFF' },
+    backgroundColor: BLUE, borderRadius: 40, padding: 8, gap: 4, minHeight: 64 },
+  tab: { flex: 1, minHeight: 44, minWidth: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 28, gap: 6, paddingHorizontal: 6 },
+  selected: { flex: 2.2, backgroundColor: '#FFFFFF' },
   icon: { width: 22, height: 22 },
-  label: { color: BLUE, fontSize: 13, fontWeight: '700', flexShrink: 1 },
+  label: { color: BLUE, fontSize: 12.5, fontWeight: '700', flexShrink: 1 },
   pressed: { opacity: 0.75 },
 });

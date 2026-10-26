@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -45,6 +46,31 @@ export function WhatsAppModal({
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
+      setAndroidKeyboardHeight(e.endCoordinates.height);
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 50);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setAndroidKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      setAndroidKeyboardHeight(0);
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (!visible || !token) return;
@@ -129,25 +155,34 @@ export function WhatsAppModal({
         style={styles.keyboardAvoid}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.overlay}>
+        <View
+          style={[
+            styles.overlay,
+            Platform.OS === 'android' && androidKeyboardHeight > 0 && {
+              paddingBottom: androidKeyboardHeight,
+            },
+          ]}
+        >
           <Pressable style={styles.backdropPressable} onPress={onClose} />
           <View style={styles.sheet}>
+            {/* Header */}
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.title}>WhatsApp Student</Text>
+                <Text style={styles.subtitle}>Prefilled manual message handoff</Text>
+              </View>
+              <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
+                <Text style={styles.closeText}>✕</Text>
+              </Pressable>
+            </View>
+
+            {/* Scrollable message content */}
             <ScrollView
+              ref={scrollViewRef}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.sheetScroll}
             >
-              {/* Header */}
-              <View style={styles.header}>
-                <View>
-                  <Text style={styles.title}>WhatsApp Student</Text>
-                  <Text style={styles.subtitle}>Prefilled manual message handoff</Text>
-                </View>
-                <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
-                  <Text style={styles.closeText}>✕</Text>
-                </Pressable>
-              </View>
-
               {/* Student details */}
               <View style={styles.infoBox}>
                 <View style={styles.infoCol}>
@@ -216,33 +251,38 @@ export function WhatsAppModal({
                 placeholder="Type your WhatsApp message (tap mic to speak)..."
                 multiline
                 numberOfLines={4}
+                onFocus={() => {
+                  setTimeout(() => {
+                    scrollViewRef.current?.scrollToEnd({ animated: true });
+                  }, 120);
+                }}
               />
 
               <Text style={styles.disclaimer}>
                 ℹ️ WhatsApp will open with this message prefilled. You must press Send in WhatsApp.
               </Text>
-
-              {/* Actions */}
-              <View style={styles.actions}>
-                <Pressable
-                  style={styles.cancelBtn}
-                  onPress={onClose}
-                  disabled={submitting}
-                >
-                  <Text style={styles.cancelText}>Cancel</Text>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.openBtn, submitting && { opacity: 0.6 }]}
-                  onPress={handleOpenWhatsApp}
-                  disabled={submitting}
-                >
-                  <Text style={styles.openText}>
-                    {submitting ? "Opening..." : "💬 Open WhatsApp"}
-                  </Text>
-                </Pressable>
-              </View>
             </ScrollView>
+
+            {/* Actions pinned at bottom of sheet above keyboard */}
+            <View style={styles.actionsBar}>
+              <Pressable
+                style={styles.cancelBtn}
+                onPress={onClose}
+                disabled={submitting}
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.openBtn, submitting && { opacity: 0.6 }]}
+                onPress={handleOpenWhatsApp}
+                disabled={submitting}
+              >
+                <Text style={styles.openText}>
+                  {submitting ? "Opening..." : "💬 Open WhatsApp"}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -268,9 +308,11 @@ const makeStyles = (c: AppColors) =>
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       maxHeight: "85%",
+      overflow: "hidden",
     },
     sheetScroll: {
-      padding: 20,
+      paddingHorizontal: 20,
+      paddingVertical: 14,
       gap: 12,
     },
     header: {
@@ -279,6 +321,8 @@ const makeStyles = (c: AppColors) =>
       alignItems: "center",
       borderBottomWidth: 1,
       borderBottomColor: c.border,
+      paddingHorizontal: 20,
+      paddingTop: 16,
       paddingBottom: 12,
     },
     title: {
@@ -369,6 +413,16 @@ const makeStyles = (c: AppColors) =>
       fontSize: 11,
       color: c.muted,
       lineHeight: 16,
+    },
+    actionsBar: {
+      flexDirection: "row",
+      gap: 12,
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 16,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+      backgroundColor: c.surface,
     },
     actions: {
       flexDirection: "row",

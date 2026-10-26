@@ -1,7 +1,7 @@
-﻿const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm'), ts = require('typescript');
+const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm'), ts = require('typescript');
 function setup(options={}) {
  const files = new Map(), requests=[], validations=[];let downloads=0, release;
- const native={getInstalledAppInfo:async()=>({version:'1.0.1',versionCode:options.currentCode??2,packageName:'com.vaani.caller'}),validateApk:async(uri,code)=>{validations.push([uri,code]);if(options.badApk)throw Error('Invalid APK');return true;},installApk:async()=>options.permission?'permission_required':'installer_opened',openInstallSettings:async()=>{}};
+ const native={getInstalledAppInfo:async()=>({version:'1.0.1',versionCode:options.currentCode??2,packageName:'com.vaani.caller'}),validateApk:async(uri,code,sha)=>{validations.push([uri,code,sha]);if(options.badApk)throw Error('Invalid APK');return true;},installApk:async(uri,code,sha)=>options.permission?'permission_required':'installer_opened',openInstallSettings:async()=>{}};
  const info={latest_version:'1.0.2',version_code:3,minimum_version_code:1,mandatory:false,download_url:'https://vaaniapp.co.in/dist/vaani.apk',...options.info};
  const FS={cacheDirectory:'file:///cache/',getInfoAsync:async uri=>files.has(uri)?{exists:true,size:files.get(uri),isDirectory:false}:{exists:false},makeDirectoryAsync:async()=>{},deleteAsync:async uri=>files.delete(uri),moveAsync:async({from,to})=>{files.set(to,files.get(from));files.delete(from)},createDownloadResumable:(url,uri,headers,progress)=>{requests.push({url,headers});return {cancelAsync:async()=>{},downloadAsync:async()=>{downloads++;progress({totalBytesWritten:50,totalBytesExpectedToWrite:100});if(options.hold)await new Promise(r=>release=r);if(options.fail){options.fail=false;throw Error('Network failed')}files.set(uri,options.empty?0:100);return {status:options.downloadStatus??200,headers:options.headers||{},uri}}}}};
  class ApiError extends Error {constructor(message,status){super(message);this.status=status;}}
@@ -61,3 +61,86 @@ test('mismatched byte length is rejected before native validation; complete byte
  assert.match(x.api.getUpdateState().error,/incomplete/);assert.equal(x.validations.length,0);assert.equal(x.files.size,0);
  x.options.headers={'content-length':'100'};await x.api.downloadLatestApk();assert.equal(x.api.getUpdateState().status,'downloaded');
 });
+
+test('modern metadata format with version, versionCode, apkUrl, releaseNotes and sha256', () => {
+ const x = setup();
+ const parsed = x.api.parseUpdateInfo({
+  version: '1.0.8',
+  versionCode: 25,
+  apkUrl: 'https://vaaniapp.co.in/app/download/vaani-caller-v1.0.8-25.apk',
+  releaseNotes: 'Stability improvements and bug fixes.',
+  mandatory: false,
+  sha256: 'a'.repeat(64),
+ });
+ assert.equal(parsed.version, '1.0.8');
+ assert.equal(parsed.versionCode, 25);
+ assert.equal(parsed.latest_version, '1.0.8');
+ assert.equal(parsed.version_code, 25);
+ assert.equal(parsed.apkUrl, 'https://vaaniapp.co.in/app/download/vaani-caller-v1.0.8-25.apk');
+ assert.equal(JSON.stringify(parsed.releaseNotes), JSON.stringify(['Stability improvements and bug fixes.']));
+ assert.equal(parsed.sha256, 'a'.repeat(64));
+ assert.equal(parsed.mandatory, false);
+});
+
+test('numeric versionCode comparison: 25 vs 24 is newer, 24 vs 24 is up-to-date', () => {
+ const x = setup();
+ const current = { version: '1.0.7', versionCode: 24, packageName: 'com.vaani.caller' };
+ const newer = { versionCode: 25, version: '1.0.8' };
+ const same = { versionCode: 24, version: '1.0.7' };
+ const older = { versionCode: 23, version: '1.0.6' };
+ assert.equal(x.api.hasNewerVersion(current, newer), true);
+ assert.equal(x.api.hasNewerVersion(current, same), false);
+ assert.equal(x.api.hasNewerVersion(current, older), false);
+});
+
+test('reject untrusted and malformed download URLs', () => {
+ const x = setup();
+ for (const url of [
+  'https://untrusted-host.com/app.apk',
+  'https://evil.org/download/vaani.apk',
+  'http://vaaniapp.co.in/app/download/vaani.apk',
+  'https://user:pass@vaaniapp.co.in/app/download/vaani.apk',
+  'https://vaaniapp.co.in/app/download/vaani.apk?param=1',
+  'not-a-url',
+ ]) {
+  assert.throws(() =>
+   x.api.parseUpdateInfo({
+    version: '1.0.8',
+    versionCode: 25,
+    apkUrl: url,
+   })
+  );
+ }
+});
+
+test('reject invalid SHA-256 strings in metadata', () => {
+ const x = setup();
+ for (const badSha of ['not-a-sha', '1234', 'g'.repeat(64), 'a'.repeat(63), 'a'.repeat(65)]) {
+  assert.throws(() =>
+   x.api.parseUpdateInfo({
+    version: '1.0.8',
+    versionCode: 25,
+    apkUrl: 'https://vaaniapp.co.in/app/download/vaani-caller-v1.0.8-25.apk',
+    sha256: badSha,
+   })
+  );
+ }
+});
+
+test('valid SHA-256 is passed to native validateApk during download', async () => {
+ const testSha = 'abcdef0123456789'.repeat(4);
+ const x = setup({
+  info: {
+   version: '1.0.8',
+   version_code: 25,
+   download_url: 'https://vaaniapp.co.in/app/download/vaani-caller-v1.0.8-25.apk',
+   sha256: testSha,
+  },
+ });
+ await x.api.getAppUpdateInfo();
+ await x.api.downloadLatestApk();
+ assert.equal(x.validations.length, 1);
+ assert.equal(x.validations[0][1], 25);
+ assert.equal(x.validations[0][2], testSha);
+});
+

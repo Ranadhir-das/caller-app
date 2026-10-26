@@ -8,6 +8,7 @@ import { useAppStyles, type AppColors } from '@/context/AppThemeContext';
 import { useNotificationUnreadCount } from '@/hooks/useNotificationUnreadCount';
 import { unreadBadge } from '@/services/notificationCenter';
 import { NotificationIcon } from '@/components/NotificationIcon';
+import { VectorIcon, type VectorIconName } from '@/components/VectorIcon';
 import { COUNSELOR_TEAL, COUNSELOR_TEAL_SOFT_LIGHT, COUNSELOR_TEAL_SOFT_DARK } from '@/services/counselor';
 
 export default function CounselorMoreScreen() {
@@ -70,10 +71,11 @@ export default function CounselorMoreScreen() {
         </Pressable>
 
         {([
-          ['Employee workspace', 'Attendance, leave and daily work', '/employee', '💼'],
-          ['My Profile', 'Account details and profile photo', '/profile', '👤'],
-          ['Settings', 'Appearance and app preferences', '/settings', '⚙️'],
-        ] as const).map(([title, subtitle, route, icon]) => (
+          ['Work Activity & Sessions', 'Track work sessions, breaks and hours', '/activity', 'clock'],
+          ['Employee workspace', 'Attendance, leave and daily work', '/employee', 'briefcase'],
+          ['My Profile', 'Account details and profile photo', '/profile', 'user'],
+          ['Settings', 'Appearance and app preferences', '/settings', 'settings'],
+        ] as const).map(([title, subtitle, route, iconName]) => (
           <Pressable
             key={route}
             accessibilityRole="button"
@@ -81,7 +83,7 @@ export default function CounselorMoreScreen() {
             onPress={() => router.push(route as never)}
           >
             <View style={styles.menuIcon}>
-              <Text style={styles.menuLetter}>{icon}</Text>
+              <VectorIcon name={iconName as VectorIconName} color={COUNSELOR_TEAL} size={22} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{title}</Text>

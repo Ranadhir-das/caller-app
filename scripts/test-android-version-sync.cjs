@@ -5,12 +5,12 @@ const path = require('node:path');
 const os = require('node:os');
 const { syncAndroidVersion } = require('./sync-android-version.cjs');
 
-test('Current project app.json has canonical version 1.0.7 and versionCode 24', () => {
+test('Current project app.json has canonical version 1.0.9 and versionCode 26', () => {
   const rootDir = path.join(__dirname, '..');
   const appJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'app.json'), 'utf8'));
 
-  assert.equal(appJson.expo.version, '1.0.7');
-  assert.equal(appJson.expo.android.versionCode, 24);
+  assert.equal(appJson.expo.version, '1.0.9');
+  assert.equal(appJson.expo.android.versionCode, 26);
 });
 
 test('syncAndroidVersion reports unchanged when android/app/build.gradle already matches app.json in fixture', () => {
