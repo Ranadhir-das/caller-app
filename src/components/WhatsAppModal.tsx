@@ -29,6 +29,8 @@ interface WhatsAppModalProps {
   leadId: string;
   leadName: string;
   leadPhone: string;
+  canMarkMessageContact?: boolean;
+  onMarkMessageContact?: (message: string) => Promise<void> | void;
 }
 
 export function WhatsAppModal({
@@ -37,6 +39,8 @@ export function WhatsAppModal({
   leadId,
   leadName,
   leadPhone,
+  canMarkMessageContact = false,
+  onMarkMessageContact,
 }: WhatsAppModalProps) {
   const { token } = useAuth();
   const styles = useAppStyles(makeStyles);
@@ -46,6 +50,7 @@ export function WhatsAppModal({
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [markContacted, setMarkContacted] = useState(true);
   const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -134,6 +139,15 @@ export function WhatsAppModal({
         }).catch((err) => {
           console.warn("[WhatsApp] Failed to record initiated activity:", err);
         });
+      }
+
+      // 3. Optionally mark lead contacted by message if counselor requested
+      if (canMarkMessageContact && markContacted && onMarkMessageContact) {
+        try {
+          await onMarkMessageContact(message.trim());
+        } catch (e) {
+          console.warn("[WhatsApp] Failed to auto-mark message contact:", e);
+        }
       }
 
       onClose();
@@ -261,6 +275,22 @@ export function WhatsAppModal({
               <Text style={styles.disclaimer}>
                 ℹ️ WhatsApp will open with this message prefilled. You must press Send in WhatsApp.
               </Text>
+
+              {canMarkMessageContact && (
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: markContacted }}
+                  onPress={() => setMarkContacted(!markContacted)}
+                  style={styles.markContactRow}
+                >
+                  <View style={[styles.checkbox, markContacted && styles.checkboxChecked]}>
+                    {markContacted && <Text style={styles.checkIcon}>✓</Text>}
+                  </View>
+                  <Text style={styles.markContactText}>
+                    Mark lead as Contacted by Message (Next Year)
+                  </Text>
+                </Pressable>
+              )}
             </ScrollView>
 
             {/* Actions pinned at bottom of sheet above keyboard */}
@@ -413,6 +443,39 @@ const makeStyles = (c: AppColors) =>
       fontSize: 11,
       color: c.muted,
       lineHeight: 16,
+    },
+    markContactRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 6,
+      marginTop: 2,
+    },
+    checkbox: {
+      width: 20,
+      height: 20,
+      borderRadius: 5,
+      borderWidth: 1.5,
+      borderColor: c.border,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: c.background,
+    },
+    checkboxChecked: {
+      backgroundColor: "#4F46E5",
+      borderColor: "#4F46E5",
+    },
+    checkIcon: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "800",
+      marginTop: -1,
+    },
+    markContactText: {
+      color: c.text,
+      fontSize: 13,
+      fontWeight: "600",
+      flex: 1,
     },
     actionsBar: {
       flexDirection: "row",

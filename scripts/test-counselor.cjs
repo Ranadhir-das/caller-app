@@ -57,18 +57,24 @@ test('homeRouteFor routes counselors to /counselor and others to /employee', () 
   assert.equal(homeRouteFor(null), '/employee');
 });
 
-test('canOfferForward requires CALLER role, INTERESTED outcome, and non-null leadId', () => {
+test('canOfferForward requires CALLER role, INTERESTED or B2B outcome, and non-null leadId', () => {
   assert.equal(canOfferForward({ role: 'CALLER' }, 'INTERESTED', 42), true);
   assert.equal(canOfferForward({ role: 'caller' }, 'interested', 42), true);
+  assert.equal(canOfferForward({ role: 'CALLER' }, 'B2B', 42), true);
+  assert.equal(canOfferForward({ role: 'caller' }, 'b2b', 42), true);
   // Non-caller cannot forward
   assert.equal(canOfferForward({ role: 'COUNSELOR' }, 'INTERESTED', 42), false);
+  assert.equal(canOfferForward({ role: 'COUNSELOR' }, 'B2B', 42), false);
   assert.equal(canOfferForward({ role: 'ADMIN' }, 'INTERESTED', 42), false);
-  // Non-interested outcome cannot forward
+  assert.equal(canOfferForward({ role: 'ADMIN' }, 'B2B', 42), false);
+  // Other non-interested/non-b2b outcomes cannot forward
   assert.equal(canOfferForward({ role: 'CALLER' }, 'NOT_INTERESTED', 42), false);
   assert.equal(canOfferForward({ role: 'CALLER' }, 'CALL_BACK', 42), false);
   // Missing lead cannot forward
   assert.equal(canOfferForward({ role: 'CALLER' }, 'INTERESTED', null), false);
   assert.equal(canOfferForward({ role: 'CALLER' }, 'INTERESTED', undefined), false);
+  assert.equal(canOfferForward({ role: 'CALLER' }, 'B2B', null), false);
+  assert.equal(canOfferForward({ role: 'CALLER' }, 'B2B', undefined), false);
 });
 
 test('availabilityTone maps codes to distinct visual tones', () => {

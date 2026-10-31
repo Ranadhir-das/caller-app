@@ -17,7 +17,7 @@ import {
 } from '@/services/counselor';
 
 type TabSection = 'FORWARDED' | 'CREATED';
-type FilterType = 'ALL' | 'PENDING' | 'CONTACTED' | 'TODAY' | 'ADMISSION';
+type FilterType = 'ALL' | 'PENDING' | 'CONTACTED' | 'CONTACTED_BY_MESSAGE' | 'TODAY' | 'ADMISSION';
 
 function isContactedToday(iso?: string | null): boolean {
   if (!iso) return false;
@@ -102,8 +102,11 @@ export default function CounselorLeadsScreen() {
   const allCount = forwardedLeads?.length ?? 0;
   const pendingCount = (forwardedLeads || []).filter((l) => l.counselor_contact_status === 'PENDING').length;
   const contactedCount = (forwardedLeads || []).filter((l) => l.counselor_contact_status === 'CONTACTED').length;
+  const messageCount = (forwardedLeads || []).filter((l) => l.counselor_contact_status === 'CONTACTED_BY_MESSAGE').length;
   const todayCount = (forwardedLeads || []).filter(
-    (l) => l.counselor_contact_status === 'CONTACTED' && isContactedToday(l.last_contacted_at)
+    (l) =>
+      (l.counselor_contact_status === 'CONTACTED' || l.counselor_contact_status === 'CONTACTED_BY_MESSAGE') &&
+      isContactedToday(l.last_contacted_at)
   ).length;
   const admissionCount = (forwardedLeads || []).filter(
     (l) => l.status && l.status.toUpperCase().includes('ADMISSION')
@@ -112,8 +115,12 @@ export default function CounselorLeadsScreen() {
   const filteredForwardedLeads = (forwardedLeads || []).filter((lead) => {
     if (filter === 'PENDING') return lead.counselor_contact_status === 'PENDING';
     if (filter === 'CONTACTED') return lead.counselor_contact_status === 'CONTACTED';
+    if (filter === 'CONTACTED_BY_MESSAGE') return lead.counselor_contact_status === 'CONTACTED_BY_MESSAGE';
     if (filter === 'TODAY') {
-      return lead.counselor_contact_status === 'CONTACTED' && isContactedToday(lead.last_contacted_at);
+      return (
+        (lead.counselor_contact_status === 'CONTACTED' || lead.counselor_contact_status === 'CONTACTED_BY_MESSAGE') &&
+        isContactedToday(lead.last_contacted_at)
+      );
     }
     if (filter === 'ADMISSION') {
       return lead.status && lead.status.toUpperCase().includes('ADMISSION');
@@ -215,6 +222,17 @@ export default function CounselorLeadsScreen() {
 
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={`Show ${messageCount} contacted by message`}
+              onPress={() => setFilter('CONTACTED_BY_MESSAGE')}
+              style={[styles.filterPill, filter === 'CONTACTED_BY_MESSAGE' && styles.filterPillMessageActive]}
+            >
+              <Text style={[styles.filterPillText, filter === 'CONTACTED_BY_MESSAGE' && styles.filterPillTextActive]}>
+                By Message ({messageCount})
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
               accessibilityLabel={`Show ${todayCount} contacted today`}
               onPress={() => setFilter('TODAY')}
               style={[styles.filterPill, filter === 'TODAY' && styles.filterPillActive]}
@@ -252,6 +270,8 @@ export default function CounselorLeadsScreen() {
                     ? 'All your forwarded leads have been contacted.'
                     : filter === 'CONTACTED'
                       ? 'No leads contacted yet. Call a student to begin.'
+                      : filter === 'CONTACTED_BY_MESSAGE'
+                        ? 'No leads marked as contacted by message yet.'
                       : filter === 'TODAY'
                         ? 'No students contacted today yet.'
                         : filter === 'ADMISSION'

@@ -24,7 +24,7 @@ type StatCardDef = {
   id: string;
   label: string;
   value: number | undefined;
-  icon: 'leads' | 'clock' | 'check-circle' | 'admission';
+  icon: 'leads' | 'clock' | 'check-circle' | 'admission' | 'chat';
   onPress: () => void;
 };
 
@@ -90,6 +90,17 @@ export default function CounselorDashboardScreen() {
         router.push({
           pathname: '/counselor/leads',
           params: { section: 'FORWARDED', filter: 'CONTACTED' },
+        } as never),
+    },
+    {
+      id: 'contacted_by_message',
+      label: 'Contacted by message',
+      value: stats?.contacted_by_message ?? 0,
+      icon: 'chat',
+      onPress: () =>
+        router.push({
+          pathname: '/counselor/leads',
+          params: { section: 'FORWARDED', filter: 'CONTACTED_BY_MESSAGE' },
         } as never),
     },
     {

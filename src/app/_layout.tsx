@@ -29,6 +29,7 @@ import {
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { ActivityProvider } from '@/context/ActivityContext';
+import { EmployeeWorkspaceProvider } from '@/context/EmployeeWorkspaceContext';
 import { DialerSessionProvider } from '@/context/DialerSessionContext';
 import { LeadProvider } from '@/context/LeadContext';
 import { COUNSELOR_ROUTES, isCounselor } from '@/services/counselor';
@@ -52,7 +53,7 @@ function AuthRedirect() {
 
     if (!user) return;
 
-    const employeeRoutes = ['/employee', '/employee/index', '/employee/attendance', '/employee/leave', '/employee/work', '/profile', '/settings', '/chat', '/notices', '/notifications', '/login', '/activity'];
+    const employeeRoutes = ['/employee', '/employee/index', '/employee/attendance', '/employee/leave', '/employee/work', '/profile', '/settings', '/chat', '/notices', '/notifications', '/login', '/activity', '/points-breakup', '/performance'];
     const canCaller = isCallerCapable(user) && !user.needs_onboarding;
     const canCounselor = isCounselorCapable(user) && !user.needs_onboarding;
 
@@ -120,6 +121,8 @@ function AppNavigator() {
           <Stack.Screen name="notices" />
           <Stack.Screen name="notifications" />
           <Stack.Screen name="activity" />
+          <Stack.Screen name="points-breakup" />
+          <Stack.Screen name="performance" />
         </Stack.Protected>
         <Stack.Protected guard={isCallerCapable(user) && !user?.needs_onboarding}>
           <Stack.Screen name="direct-dialer" />
@@ -182,8 +185,10 @@ function AccountData() {
     <LeadProvider key={user?.id ?? "signed-out"}>
       <DialerSessionProvider>
         <ActivityProvider>
-          <AppNavigator />
-          {user ? <PeerAppreciationModal /> : null}
+          <EmployeeWorkspaceProvider>
+            <AppNavigator />
+            {user ? <PeerAppreciationModal /> : null}
+          </EmployeeWorkspaceProvider>
         </ActivityProvider>
       </DialerSessionProvider>
     </LeadProvider>

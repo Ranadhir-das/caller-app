@@ -21,6 +21,7 @@ import {
   getStatusLabel,
 } from '@/utils/status';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { maskPhoneNumber } from '@/utils/phoneMask';
 
 import { useLeads } from '@/context/LeadContext';
 import { AvailableLead, Lead } from '@/types';
@@ -233,7 +234,7 @@ export default function LeadsScreen() {
             {item.name}
           </Text>
 
-          <Text style={styles.phone}>{item.phone}</Text>
+          <Text style={styles.phone}>{maskPhoneNumber(item.phone)}</Text>
         </View>
 
         <View
@@ -280,7 +281,7 @@ export default function LeadsScreen() {
           <View style={styles.availableLeadInfo}>
             <Text style={styles.name}>{item.name}</Text>
             <Text style={styles.phoneMasked}>
-              {item.phoneMasked || '••••••••••'}
+              {maskPhoneNumber(item.phoneMasked || item.phone) || '••••••••••'}
             </Text>
           </View>
 

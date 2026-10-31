@@ -3,7 +3,7 @@ import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeCon
 import { useAuth } from "@/context/AuthContext";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { getCurrentCoords } from "@/services/location";
+import { getCurrentCoords, openLocationSettings } from "@/services/location";
 import { homeRouteFor } from "@/services/counselor";
 import { useState } from "react";
 import {
@@ -73,7 +73,7 @@ export default function LoginScreen() {
 
       if (result.photo_required === false) {
         // No camera step needed (e.g. admin sign-in) — finish immediately.
-        const location = await getCurrentCoords();
+        const location = await getCurrentCoords().catch(() => null);
         const verified = await completeLogin(result.challenge, undefined, undefined, location, loginRemark.trim() || undefined);
         if ("token" in verified) {
           router.replace(homeRouteFor(verified.user) as never);
@@ -92,12 +92,22 @@ export default function LoginScreen() {
     } catch (error) {
       console.error("Login error:", error);
 
-      Alert.alert(
-        "Login Failed",
-        error instanceof Error
-          ? error.message
-          : "Unable to login. Please try again."
-      );
+      const errorMsg = error instanceof Error ? error.message : "Unable to login. Please try again.";
+      const isGpsError =
+        errorMsg.includes("GPS accuracy") ||
+        errorMsg.includes("POOR_GPS_ACCURACY") ||
+        errorMsg.includes("geofence") ||
+        errorMsg.includes("Device location services") ||
+        errorMsg.includes("Precise location");
+
+      if (isGpsError) {
+        Alert.alert("Location Verification", errorMsg, [
+          { text: "Settings", onPress: () => void openLocationSettings() },
+          { text: "OK", style: "cancel" },
+        ]);
+      } else {
+        Alert.alert("Login Failed", errorMsg);
+      }
     } finally {
       setLoading(false);
     }
@@ -131,7 +141,7 @@ export default function LoginScreen() {
       const image = result.assets[0].base64;
       if (!image) throw new Error("Photo could not be read. Please try again.");
 
-      const location = await getCurrentCoords();
+      const location = await getCurrentCoords().catch(() => null);
       const verified = await completeLogin(
         challenge.id,
         image,
@@ -150,12 +160,22 @@ export default function LoginScreen() {
     } catch (error) {
       console.error("Login verification error:", error);
 
-      Alert.alert(
-        "Verification Failed",
-        error instanceof Error
-          ? error.message
-          : "Unable to verify your photo. Please try again."
-      );
+      const errorMsg = error instanceof Error ? error.message : "Unable to verify your photo. Please try again.";
+      const isGpsError =
+        errorMsg.includes("GPS accuracy") ||
+        errorMsg.includes("POOR_GPS_ACCURACY") ||
+        errorMsg.includes("geofence") ||
+        errorMsg.includes("Device location services") ||
+        errorMsg.includes("Precise location");
+
+      if (isGpsError) {
+        Alert.alert("Location Verification", errorMsg, [
+          { text: "Settings", onPress: () => void openLocationSettings() },
+          { text: "OK", style: "cancel" },
+        ]);
+      } else {
+        Alert.alert("Verification Failed", errorMsg);
+      }
     } finally {
       setLoading(false);
     }

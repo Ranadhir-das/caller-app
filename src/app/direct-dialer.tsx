@@ -1,3 +1,4 @@
+import { maskPhoneNumber } from '@/utils/phoneMask';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
@@ -412,7 +413,7 @@ export default function DirectDialerScreen() {
                   </View>
                   <View style={styles.leadDetails}>
                     <Text style={styles.leadName}>{item.name}</Text>
-                    <Text style={styles.leadPhone}>{item.phone}</Text>
+                    <Text style={styles.leadPhone}>{maskPhoneNumber(item.phone)}</Text>
                   </View>
                   {isSelected && (
                     <View style={styles.selectedPill}>

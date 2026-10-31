@@ -218,6 +218,7 @@ test('existing logout invokes tracking stop before API and clears credentials ev
     'expo-secure-store':{getItemAsync:async key=>storage.get(key), deleteItemAsync:async key=>{events.push(`delete:${key}`);storage.delete(key);}},
     './employeeLocation':{stopEmployeeLocation:async()=>events.push('stop')},
     './api':{apiRequest:async()=>{events.push('logout');throw new Error('offline');}},
+    './capabilities':{isCallerCapable:()=>true, isCounselorCapable:()=>false, isDualRole:()=>false, isFaceVerificationExempt:()=>false},
   });
   await auth.logout();
   assert.deepEqual(events.slice(0,2),['stop','logout']); assert.equal(storage.size,0);

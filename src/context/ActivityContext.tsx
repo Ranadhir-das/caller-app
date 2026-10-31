@@ -19,6 +19,7 @@ import {
   type WorkSessionSummary,
 } from '@/services/activity';
 import { ApiError } from '@/services/api';
+import { getCurrentCoords } from '@/services/location';
 
 export type ActivityContextType = {
   session: WorkSessionSummary | null;
@@ -42,6 +43,7 @@ export type ActivityContextType = {
 
   // Methods
   refreshCurrent: (showLoading?: boolean) => Promise<void>;
+  startShift: (categoryId?: number, note?: string) => Promise<void>;
   pause: (breakReasonId: number, note?: string) => Promise<void>;
   resume: (categoryId?: number, note?: string) => Promise<void>;
   switchCategory: (categoryId: number, note?: string) => Promise<void>;
@@ -217,6 +219,48 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
     };
   }, [hasActiveSession, session?.status, currentBreak]);
 
+  // Start shift action
+  const startShift = useCallback(
+    async (categoryId?: number, note?: string) => {
+      if (!token) throw new Error('Not authenticated.');
+      if (mutatingRef.current) return;
+      mutatingRef.current = true;
+      setMutating(true);
+
+      let location = null;
+      let locError: unknown = null;
+      try {
+        location = await getCurrentCoords();
+      } catch (e) {
+        locError = e;
+      }
+
+      try {
+        const res = await activityApi.startActivity(token, {
+          category_id: categoryId,
+          note: note?.trim() || undefined,
+          latitude: location?.latitude,
+          longitude: location?.longitude,
+          accuracy: location?.accuracy,
+          recorded_at: location?.recorded_at,
+          timestamp: location?.recorded_at,
+          is_mocked: location?.is_mocked ?? false,
+        });
+        applyServerResponse(res);
+      } catch (err: unknown) {
+        await refreshCurrent();
+        if (locError && err instanceof ApiError && err.status === 422) {
+          throw locError;
+        }
+        throw err;
+      } finally {
+        mutatingRef.current = false;
+        setMutating(false);
+      }
+    },
+    [token, applyServerResponse, refreshCurrent]
+  );
+
   // Pause action
   const pause = useCallback(
     async (breakReasonId: number, note?: string) => {
@@ -251,14 +295,31 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       mutatingRef.current = true;
       setMutating(true);
 
+      let location = null;
+      let locError: unknown = null;
+      try {
+        location = await getCurrentCoords();
+      } catch (e) {
+        locError = e;
+      }
+
       try {
         const res = await activityApi.resumeActivity(token, {
           category_id: categoryId,
           note: note?.trim() || undefined,
+          latitude: location?.latitude,
+          longitude: location?.longitude,
+          accuracy: location?.accuracy,
+          recorded_at: location?.recorded_at,
+          timestamp: location?.recorded_at,
+          is_mocked: location?.is_mocked ?? false,
         });
         applyServerResponse(res);
       } catch (err: unknown) {
         await refreshCurrent();
+        if (locError && err instanceof ApiError && err.status === 422) {
+          throw locError;
+        }
         throw err;
       } finally {
         mutatingRef.current = false;
@@ -301,9 +362,23 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       mutatingRef.current = true;
       setMutating(true);
 
+      let location = null;
+      let locError: unknown = null;
+      try {
+        location = await getCurrentCoords();
+      } catch (e) {
+        locError = e;
+      }
+
       try {
         const res = await activityApi.endActivity(token, {
           note: note?.trim() || undefined,
+          latitude: location?.latitude,
+          longitude: location?.longitude,
+          accuracy: location?.accuracy,
+          recorded_at: location?.recorded_at,
+          timestamp: location?.recorded_at,
+          is_mocked: location?.is_mocked ?? false,
         });
         // Clear active session locally
         setHasActiveSession(false);
@@ -316,6 +391,9 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         return res;
       } catch (err: unknown) {
         await refreshCurrent();
+        if (locError && err instanceof ApiError && err.status === 422) {
+          throw locError;
+        }
         throw err;
       } finally {
         mutatingRef.current = false;
@@ -345,6 +423,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         segmentElapsed,
         breakWarningExceeded,
         refreshCurrent,
+        startShift,
         pause,
         resume,
         switchCategory,

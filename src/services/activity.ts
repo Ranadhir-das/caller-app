@@ -188,6 +188,27 @@ export const activityApi = {
       signal,
     }),
 
+  startActivity: (
+    token: string,
+    data?: {
+      category_id?: number;
+      note?: string;
+      latitude?: number;
+      longitude?: number;
+      accuracy?: number;
+      recorded_at?: string;
+      timestamp?: string;
+      is_mocked?: boolean;
+    },
+    signal?: AbortSignal
+  ) =>
+    apiRequest<CurrentActivityResponse>('/mobile/activity/start/', {
+      token,
+      method: 'POST',
+      body: data || {},
+      signal,
+    }),
+
   pauseActivity: (
     token: string,
     data: { break_reason_id: number; note?: string },
@@ -202,7 +223,16 @@ export const activityApi = {
 
   resumeActivity: (
     token: string,
-    data?: { category_id?: number; note?: string },
+    data?: {
+      category_id?: number;
+      note?: string;
+      latitude?: number;
+      longitude?: number;
+      accuracy?: number;
+      recorded_at?: string;
+      timestamp?: string;
+      is_mocked?: boolean;
+    },
     signal?: AbortSignal
   ) =>
     apiRequest<CurrentActivityResponse>('/mobile/activity/resume/', {
@@ -226,7 +256,15 @@ export const activityApi = {
 
   endActivity: (
     token: string,
-    data?: { note?: string },
+    data?: {
+      note?: string;
+      latitude?: number;
+      longitude?: number;
+      accuracy?: number;
+      recorded_at?: string;
+      timestamp?: string;
+      is_mocked?: boolean;
+    },
     signal?: AbortSignal
   ) =>
     apiRequest<EndActivityResponse>('/mobile/activity/end/', {

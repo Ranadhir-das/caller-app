@@ -19,7 +19,7 @@ import {
     verifyLogin as verifyLoginRequest,
     logout as logoutUser,
 } from "@/services/auth";
-import type { Coords } from "@/services/location";
+import type { Coords, GpsReading } from "@/services/location";
 
 type AuthContextType = {
   refreshUser: () => Promise<void>;
@@ -36,7 +36,7 @@ type AuthContextType = {
     challenge: string,
     photo?: string,
     consent?: boolean,
-    location?: Coords | null,
+    location?: GpsReading | Coords | null,
     login_remark?: string
   ) => Promise<VerifyLoginResult>;
   logout: () => Promise<void>;
@@ -129,7 +129,7 @@ export function AuthProvider({
     challenge: string,
     photo?: string,
     consent?: boolean,
-    location?: Coords | null,
+    location?: GpsReading | Coords | null,
     login_remark?: string
   ) => {
     const response = await verifyLoginRequest(challenge, photo, consent, location, login_remark);

@@ -55,6 +55,7 @@ export default function MoreScreen() {
           <View style={{ flex: 1 }}><Text style={styles.name}>Apostille Leads</Text><Text style={styles.subtitle}>Document enquiries, calls and follow-ups</Text></View><View style={styles.chevron} />
         </Pressable>}
         {([
+          ['Calling Performance', 'Calls, talk-time duration and daily trends', '/performance'],
           ['Work Activity & Sessions', 'Track work sessions, breaks and hours', '/activity'],
           ['Counselling', 'Record walk-in or Google Meet counselling', '/counselling'],
           ['Employee workspace', 'Leave, attendance and daily work', '/employee'],
@@ -64,7 +65,7 @@ export default function MoreScreen() {
           // '/employee' is the NativeTabs group root (like '/(tabs)' elsewhere) — typed-routes
           // doesn't recognize it as a plain named-folder group, but it's what actually resolves.
           <Pressable key={route} accessibilityRole="button" style={({ pressed }) => [styles.card, pressed && styles.pressed]} onPress={() => router.push(route as never)}>
-            <View style={styles.menuIcon}><Text style={styles.menuLetter}>{title === "Settings" ? "S" : title === "Counselling" ? "📋" : title === "Work Activity & Sessions" ? "⏱️" : "P"}</Text></View>
+            <View style={styles.menuIcon}><Text style={styles.menuLetter}>{title === "Calling Performance" ? "📊" : title === "Settings" ? "S" : title === "Counselling" ? "📋" : title === "Work Activity & Sessions" ? "⏱️" : "P"}</Text></View>
             <View style={{ flex: 1 }}><Text style={styles.name}>{title}</Text><Text style={styles.subtitle}>{subtitle}</Text></View>
             <View style={styles.chevron} />
           </Pressable>

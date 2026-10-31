@@ -1,3 +1,4 @@
+import { maskPhoneNumber } from '@/utils/phoneMask';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { AppColors } from '@/context/AppThemeContext';
 import {
@@ -27,7 +28,8 @@ export function CounselorLeadRow({ lead, styles, onPress }: {
   styles: ReturnType<typeof createCounselorStyles>;
   onPress: () => void;
 }) {
-  const isContacted = lead.counselor_contact_status === 'CONTACTED';
+  const isCallContacted = lead.counselor_contact_status === 'CONTACTED';
+  const isMessageContacted = lead.counselor_contact_status === 'CONTACTED_BY_MESSAGE';
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`Open ${lead.name}`} onPress={onPress}
       style={({ pressed }) => [styles.leadRow, pressed && styles.pressed]}>
@@ -35,23 +37,32 @@ export function CounselorLeadRow({ lead, styles, onPress }: {
       <View style={{ flex: 1, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <Text style={[styles.leadName, { flex: 1 }]} numberOfLines={1}>{lead.name}</Text>
-          <View style={isContacted ? styles.contactedPill : styles.pendingPill}>
-            <Text style={isContacted ? styles.contactedPillText : styles.pendingPillText}>
-              {isContacted ? 'CONTACTED' : 'PENDING'}
+          <View style={isCallContacted ? styles.contactedPill : (isMessageContacted ? styles.messagePill : styles.pendingPill)}>
+            <Text style={isCallContacted ? styles.contactedPillText : (isMessageContacted ? styles.messagePillText : styles.pendingPillText)}>
+              {isCallContacted ? 'CONTACTED' : (isMessageContacted ? 'MESSAGED' : 'PENDING')}
             </Text>
           </View>
         </View>
         <Text style={styles.leadMeta} numberOfLines={1}>
           {lead.course_label || 'Course not recorded'}{lead.expected_admission_year ? ` · ${lead.expected_admission_year}` : ''}
         </Text>
-        {isContacted ? (
+        {isCallContacted ? (
           <View style={{ gap: 1 }}>
             <Text style={styles.leadContactMeta} numberOfLines={1}>
-              Last contacted: {formatContactTime(lead.last_contacted_at)}
+              Last call: {formatContactTime(lead.last_contacted_at)}
             </Text>
             <Text style={styles.leadMeta} numberOfLines={1}>
               {lead.counselor_call_count} {lead.counselor_call_count === 1 ? 'call' : 'calls'}
               {lead.last_call_duration != null ? ` · ${formatDuration(lead.last_call_duration)}` : ''}
+            </Text>
+          </View>
+        ) : isMessageContacted ? (
+          <View style={{ gap: 1 }}>
+            <Text style={styles.leadMessageMeta} numberOfLines={1}>
+              Messaged · {formatContactTime(lead.last_contacted_at)}
+            </Text>
+            <Text style={styles.leadMeta} numberOfLines={1}>
+              Next-year / deferred intake (WhatsApp/text)
             </Text>
           </View>
         ) : (
@@ -84,7 +95,7 @@ export function CounselorCreatedLeadRow({ lead, styles, onPress }: {
           </View>
         </View>
         <Text style={styles.leadMeta} numberOfLines={1}>
-          {lead.phone}{lead.course_label ? ` · ${lead.course_label}` : ''}{lead.location ? ` · ${lead.location}` : ''}
+          {maskPhoneNumber(lead.phone)}{lead.course_label ? ` · ${lead.course_label}` : ''}{lead.location ? ` · ${lead.location}` : ''}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>
           <View style={styles.callerTag}>
@@ -131,6 +142,7 @@ export const createCounselorStyles = (c: AppColors) => {
     leadName: { color: c.text, fontSize: 16, fontWeight: '700' },
     leadMeta: { color: c.muted, fontSize: 13 },
     leadContactMeta: { color: dark ? '#34D399' : '#047857', fontSize: 12, fontWeight: '600' },
+    leadMessageMeta: { color: dark ? '#818CF8' : '#4F46E5', fontSize: 12, fontWeight: '600' },
     leadPendingMeta: { color: dark ? '#FBBF24' : '#B45309', fontSize: 12, fontWeight: '600' },
     pendingPill: {
       backgroundColor: dark ? '#451A03' : '#FEF3C7',
@@ -160,6 +172,20 @@ export const createCounselorStyles = (c: AppColors) => {
       fontWeight: '800',
       letterSpacing: 0.5,
     },
+    messagePill: {
+      backgroundColor: dark ? '#1E1B4B' : '#EEF2FF',
+      borderColor: '#6366F1',
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    messagePillText: {
+      color: dark ? '#A5B4FC' : '#4338CA',
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
     filterRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginVertical: 2 },
     filterPill: {
       paddingHorizontal: 14,
@@ -180,6 +206,10 @@ export const createCounselorStyles = (c: AppColors) => {
     filterPillContactedActive: {
       backgroundColor: dark ? '#065F46' : '#10B981',
       borderColor: '#10B981',
+    },
+    filterPillMessageActive: {
+      backgroundColor: dark ? '#3730A3' : '#4F46E5',
+      borderColor: '#4F46E5',
     },
     filterPillText: { fontSize: 13, fontWeight: '700', color: c.muted },
     filterPillTextActive: { color: '#FFFFFF' },

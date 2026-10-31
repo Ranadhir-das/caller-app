@@ -3,6 +3,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/services/api';
+import {
+  type AttendanceRequestItem,
+  type CreateAttendanceRequestPayload,
+  submitAttendanceRequest as submitRequestApi,
+  cancelAttendanceRequest as cancelRequestApi,
+} from '@/services/employee';
+
+export type { AttendanceRequestItem, CreateAttendanceRequestPayload };
 
 export type ProjectReportItem = {
   project_name: string;
@@ -17,6 +25,7 @@ export type Workspace = {
   role_label: string;
   date: string;
   attendance: { id: number; date: string; checked_in: string | null; checked_out: string | null }[];
+  attendance_requests?: AttendanceRequestItem[];
   leaves: { id: number; start_date: string; end_date: string; reason: string; status: string; review_note: string }[];
   projects: { id: number; title: string; description: string; due_date: string | null; status: string }[];
   reports: {
@@ -42,6 +51,8 @@ type EmployeeWorkspaceState = {
   run: (action: () => Promise<void>) => Promise<void>;
   request: (path: string, body?: unknown, method?: 'POST' | 'PATCH' | 'DELETE') => Promise<unknown>;
   photo: (action: string) => Promise<void>;
+  submitAttendanceRequest: (payload: CreateAttendanceRequestPayload) => Promise<AttendanceRequestItem>;
+  cancelAttendanceRequest: (id: number) => Promise<void>;
 };
 
 const EmployeeWorkspaceContext = createContext<EmployeeWorkspaceState | null>(null);
@@ -91,14 +102,59 @@ export function EmployeeWorkspaceProvider({ children }: { children: ReactNode })
     Alert.alert('Photo submitted', 'Your photo is awaiting administrator review. Attendance is confirmed after approval.');
   }), [run, request, refreshUser, token]);
 
-  const value = useMemo(() => ({ data, refreshing, busy, error, load, run, request, photo }),
-    [data, refreshing, busy, error, load, run, request, photo]);
+  const submitAttendanceRequest = useCallback(async (payload: CreateAttendanceRequestPayload) => {
+    if (!token) throw new Error('Not authenticated.');
+    const result = await submitRequestApi(token, payload);
+    await load();
+    return result;
+  }, [token, load]);
+
+  const cancelAttendanceRequest = useCallback(async (id: number) => {
+    if (!token) throw new Error('Not authenticated.');
+    await cancelRequestApi(token, id);
+    await load();
+  }, [token, load]);
+
+  const value = useMemo(() => ({
+    data,
+    refreshing,
+    busy,
+    error,
+    load,
+    run,
+    request,
+    photo,
+    submitAttendanceRequest,
+    cancelAttendanceRequest,
+  }), [data, refreshing, busy, error, load, run, request, photo, submitAttendanceRequest, cancelAttendanceRequest]);
 
   return <EmployeeWorkspaceContext.Provider value={value}>{children}</EmployeeWorkspaceContext.Provider>;
 }
 
-export function useEmployeeWorkspace() {
+export function useOptionalEmployeeWorkspace(): EmployeeWorkspaceState | null {
+  return useContext(EmployeeWorkspaceContext);
+}
+
+const noopPromise = async () => {};
+const fallbackWorkspaceState: EmployeeWorkspaceState = {
+  data: null,
+  refreshing: false,
+  busy: false,
+  error: '',
+  load: noopPromise,
+  run: noopPromise,
+  request: async () => null,
+  photo: noopPromise,
+  submitAttendanceRequest: async () => {
+    throw new Error('Employee workspace is not available.');
+  },
+  cancelAttendanceRequest: noopPromise,
+};
+
+export function useEmployeeWorkspace(): EmployeeWorkspaceState {
   const ctx = useContext(EmployeeWorkspaceContext);
-  if (!ctx) throw new Error('useEmployeeWorkspace must be used within EmployeeWorkspaceProvider');
+  if (!ctx) {
+    return fallbackWorkspaceState;
+  }
   return ctx;
 }

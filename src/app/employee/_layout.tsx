@@ -1,7 +1,7 @@
-﻿import { useCallback } from 'react';
+import { useCallback } from 'react';
 import { Tabs, useFocusEffect } from 'expo-router';
 import { CallerTabBar } from '@/components/CallerTabBar';
-import { EmployeeWorkspaceProvider, useEmployeeWorkspace } from '@/context/EmployeeWorkspaceContext';
+import { useEmployeeWorkspace } from '@/context/EmployeeWorkspaceContext';
 
 export const unstable_settings = { initialRouteName: 'index' };
 
@@ -20,5 +20,5 @@ function EmployeeTabs() {
 }
 
 export default function EmployeeTabsLayout() {
-  return <EmployeeWorkspaceProvider><EmployeeTabs /></EmployeeWorkspaceProvider>;
+  return <EmployeeTabs />;
 }

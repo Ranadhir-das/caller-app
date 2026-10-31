@@ -48,6 +48,10 @@ export default function CounselorLeadDetailScreen() {
   const [admissionMessage, setAdmissionMessage] = useState('');
   const [submittingAdmission, setSubmittingAdmission] = useState(false);
 
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messageNote, setMessageNote] = useState('');
+  const [submittingMessage, setSubmittingMessage] = useState(false);
+
   // Call tracking refs
   const callStartedAtRef = useRef<string | null>(null);
   const callEndedAtRef = useRef<string | null>(null);
@@ -73,6 +77,24 @@ export default function CounselorLeadDetailScreen() {
       setRefreshing(false);
     }
   }, [token, leadId]);
+
+  const handleMarkContactedByMessage = async () => {
+    if (!token || !leadId) return;
+    setSubmittingMessage(true);
+    try {
+      await counselorApi.markContactedByMessage(token, leadId, {
+        notes: messageNote.trim() || 'Contacted student via text/WhatsApp message (interested for next year intake).',
+      });
+      setShowMessageModal(false);
+      setMessageNote('');
+      Alert.alert('Status Updated', 'Lead marked as Contacted by Message.');
+      await load();
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not update status.');
+    } finally {
+      setSubmittingMessage(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -240,10 +262,14 @@ export default function CounselorLeadDetailScreen() {
 
   const { lead, interested, caller, assignment, calls, counsellings, counselor_notes, admission_requests, has_pending_admission_request } = detail;
   const contactStatus = detail.counselor_contact_status ?? detail.lead.counselor_contact_status ?? 'PENDING';
-  const isContacted = contactStatus === 'CONTACTED';
+  const isCallContacted = contactStatus === 'CONTACTED';
+  const isMessageContacted = contactStatus === 'CONTACTED_BY_MESSAGE';
+  const isPending = !isCallContacted && !isMessageContacted;
   const lastContactedAt = detail.last_contacted_at ?? detail.lead.last_contacted_at;
   const lastDuration = detail.last_call_duration ?? detail.lead.last_call_duration;
   const callCount = detail.counselor_call_count ?? detail.lead.counselor_call_count ?? 0;
+  const messageCount = detail.counselor_message_count ?? detail.lead.counselor_message_count ?? (isMessageContacted ? 1 : 0);
+  const canMessageContact = Boolean(detail.permissions?.can_contact_via_message ?? user?.can_contact_via_message);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -270,18 +296,25 @@ export default function CounselorLeadDetailScreen() {
             <View>
               <Text style={styles.itemLabel}>Contact Status</Text>
               <View style={{ marginTop: 4 }}>
-                <View style={isContacted ? styles.contactDoneBadge : styles.contactPendingBadge}>
-                  <Text style={isContacted ? styles.contactDoneBadgeText : styles.contactPendingBadgeText}>
-                    {isContacted ? 'CONTACTED' : 'PENDING'}
+                <View style={isCallContacted ? styles.contactDoneBadge : (isMessageContacted ? styles.contactMessageBadge : styles.contactPendingBadge)}>
+                  <Text style={isCallContacted ? styles.contactDoneBadgeText : (isMessageContacted ? styles.contactMessageBadgeText : styles.contactPendingBadgeText)}>
+                    {isCallContacted ? 'CONTACTED' : (isMessageContacted ? 'MESSAGED' : 'PENDING')}
                   </Text>
                 </View>
               </View>
             </View>
-            {isContacted ? (
+            {isCallContacted ? (
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={styles.itemLabel}>Calls</Text>
                 <Text style={[styles.itemValue, { fontSize: 18, fontWeight: '800', color: COUNSELOR_TEAL }]}>
                   {callCount}
+                </Text>
+              </View>
+            ) : isMessageContacted ? (
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.itemLabel}>Messages</Text>
+                <Text style={[styles.itemValue, { fontSize: 18, fontWeight: '800', color: '#6366F1' }]}>
+                  {messageCount}
                 </Text>
               </View>
             ) : null}
@@ -289,17 +322,28 @@ export default function CounselorLeadDetailScreen() {
 
           <View style={styles.divider} />
 
-          {isContacted ? (
+          {isCallContacted ? (
             <View style={styles.grid}>
               <View style={styles.gridItem}>
-                <Text style={styles.itemLabel}>Last contacted</Text>
+                <Text style={styles.itemLabel}>Last call</Text>
                 <Text style={styles.itemValue}>{formatContactTime(lastContactedAt)}</Text>
               </View>
               <View style={styles.gridItem}>
-                <Text style={styles.itemLabel}>Last call</Text>
+                <Text style={styles.itemLabel}>Call duration</Text>
                 <Text style={styles.itemValue}>
                   {lastDuration != null ? formatDuration(lastDuration) : '–'}
                 </Text>
+              </View>
+            </View>
+          ) : isMessageContacted ? (
+            <View style={styles.grid}>
+              <View style={styles.gridItem}>
+                <Text style={styles.itemLabel}>Last messaged</Text>
+                <Text style={styles.itemValue}>{formatContactTime(lastContactedAt)}</Text>
+              </View>
+              <View style={styles.gridItem}>
+                <Text style={styles.itemLabel}>Intake Mode</Text>
+                <Text style={[styles.itemValue, { color: '#6366F1' }]}>Next Year / WhatsApp</Text>
               </View>
             </View>
           ) : (
@@ -308,7 +352,7 @@ export default function CounselorLeadDetailScreen() {
                 Never contacted
               </Text>
               <Text style={{ color: colors.muted, fontSize: 12 }}>
-                Forwarded by {caller.forwarded_by_name || caller.name || 'Caller'} • Tap Call Student to initiate counselling.
+                Forwarded by {caller.forwarded_by_name || caller.name || 'Caller'} • Tap Call Student or Message Done to complete.
               </Text>
             </View>
           )}
@@ -405,6 +449,25 @@ export default function CounselorLeadDetailScreen() {
             <Text style={[styles.actionBtnText, { color: colors.text }]}>WhatsApp</Text>
           </Pressable>
         </View>
+
+        {canMessageContact && (
+          <View style={styles.actionsContainer}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Mark Contacted by Message"
+              style={[styles.actionBtn, styles.messageContactBtn]}
+              onPress={() => {
+                setMessageNote('Interested for next year. Contacted via WhatsApp.');
+                setShowMessageModal(true);
+              }}
+            >
+              <Text style={styles.actionBtnIcon}>✉️</Text>
+              <Text style={[styles.actionBtnText, { color: '#FFFFFF' }]}>
+                {isMessageContacted ? 'Update Message Note' : 'Message Done (Next Year)'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         <View style={styles.actionsContainer}>
           <Pressable
@@ -550,7 +613,75 @@ export default function CounselorLeadDetailScreen() {
         leadId={String(lead.id)}
         leadName={lead.name}
         leadPhone={lead.phone}
+        canMarkMessageContact={canMessageContact}
+        onMarkMessageContact={async (msg) => {
+          if (!token || !leadId) return;
+          try {
+            await counselorApi.markContactedByMessage(token, leadId, {
+              notes: msg || 'Contacted student via WhatsApp (interested for next year).',
+            });
+            await load();
+          } catch (e) {
+            console.warn('[WhatsApp] auto-mark message contact error:', e);
+          }
+        }}
       />
+
+      {/* Mark Contacted by Message Modal */}
+      <Modal visible={showMessageModal} transparent animationType="slide" onRequestClose={() => setShowMessageModal(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMessageModal(false)} />
+            <View style={styles.modalSheet}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: 14 }}
+              >
+                <Text style={styles.modalTitle}>Contacted by Message</Text>
+                <Text style={styles.modalSubtitle}>
+                  For students interested in next year (or deferred intake) where calling is total waste of time. Record that you texted or sent them WhatsApp details.
+                </Text>
+
+                <TextInput
+                  value={messageNote}
+                  onChangeText={setMessageNote}
+                  placeholder="e.g. Student is interested in next year intake. Sent brochure and fee details via WhatsApp..."
+                  placeholderTextColor={colors.placeholder}
+                  multiline
+                  numberOfLines={4}
+                  style={styles.modalInput}
+                />
+
+                <View style={styles.modalActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    style={[styles.modalBtn, styles.modalCancelBtn]}
+                    onPress={() => setShowMessageModal(false)}
+                    disabled={submittingMessage}
+                  >
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Save & Mark Contacted"
+                    style={[styles.modalBtn, styles.modalMessageSubmitBtn]}
+                    onPress={handleMarkContactedByMessage}
+                    disabled={submittingMessage}
+                  >
+                    <Text style={styles.modalSubmitText}>
+                      {submittingMessage ? 'Saving...' : 'Save & Mark Contacted'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Request Admission Modal */}
       <Modal visible={showAdmissionModal} transparent animationType="slide" onRequestClose={() => setShowAdmissionModal(false)}>
@@ -756,6 +887,27 @@ const createStyles = (c: AppColors) => {
       fontSize: 12,
       fontWeight: '800',
       letterSpacing: 0.6,
+    },
+    contactMessageBadge: {
+      backgroundColor: isDark ? '#1E1B4B' : '#EEF2FF',
+      borderColor: '#6366F1',
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      alignSelf: 'flex-start',
+    },
+    contactMessageBadgeText: {
+      color: isDark ? '#A5B4FC' : '#4338CA',
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 0.6,
+    },
+    messageContactBtn: {
+      backgroundColor: isDark ? '#4338CA' : '#4F46E5',
+    },
+    modalMessageSubmitBtn: {
+      backgroundColor: isDark ? '#4338CA' : '#4F46E5',
     },
     statusBadge: {
       fontSize: 11,

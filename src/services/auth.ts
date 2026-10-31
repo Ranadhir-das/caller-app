@@ -15,6 +15,9 @@ export type LoggedInUser = {
   capabilities?: import('./capabilities').UserCapabilities;
   needs_onboarding?: boolean;
   can_manage_apostille_leads?: boolean;
+  can_contact_via_message?: boolean;
+  shift_workflow_enabled?: boolean;
+  shift_geofence_enforced?: boolean;
 };
 
 const SESSION_KEY = "caller_session_id";
@@ -46,14 +49,21 @@ export async function beginLogin(
   });
 }
 
+export type AuthGpsLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  recorded_at?: string;
+  is_mocked?: boolean;
+};
+
 /** Step 2: submit the challenge (with a photo when the server required one) to receive a token.
- *  `location` is best-effort — the server still logs the session without it if the employee
- *  denies the permission or the device can't get a fix in time. */
+ *  `location` submits real GPS coordinates, accuracy, and timestamp for server geofence verification. */
 export async function verifyLogin(
   challenge: string,
   photo?: string,
   consent?: boolean,
-  location?: { latitude: number; longitude: number } | null,
+  location?: AuthGpsLocation | null,
   login_remark?: string
 ): Promise<VerifyLoginResult> {
   const response = await apiRequest<VerifyLoginResult>("/mobile/login/verify/", {
@@ -64,6 +74,10 @@ export async function verifyLogin(
       consent,
       latitude: location?.latitude,
       longitude: location?.longitude,
+      accuracy: location?.accuracy,
+      recorded_at: location?.recorded_at,
+      timestamp: location?.recorded_at,
+      is_mocked: location?.is_mocked ?? false,
       login_remark: login_remark?.trim() || undefined,
     },
   });

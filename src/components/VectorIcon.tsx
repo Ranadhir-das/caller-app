@@ -21,6 +21,7 @@ export type VectorIconName =
   | 'clock'
   | 'check-circle'
   | 'admission'
+  | 'chat'
   | 'phone';
 
 export function VectorIcon({
@@ -135,6 +136,10 @@ export function VectorIcon({
           <Line {...common} x1="8" y1="17" x2="16" y2="17" />
           <Polyline {...common} points="8 9 9 9 10 9" />
         </>
+      )}
+
+      {name === 'chat' && (
+        <Path {...common} d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       )}
 
       {name === 'phone' && (

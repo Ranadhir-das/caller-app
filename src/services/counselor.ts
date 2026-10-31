@@ -188,7 +188,7 @@ export type LeadCounselorState = {
   reason: string;
 };
 
-export type CounselorContactStatus = 'PENDING' | 'CONTACTED';
+export type CounselorContactStatus = 'PENDING' | 'CONTACTED' | 'CONTACTED_BY_MESSAGE';
 
 export type CounselorLeadSummary = {
   id: number;
@@ -207,17 +207,19 @@ export type CounselorLeadSummary = {
   last_contacted_at: string | null;
   last_call_duration: number | null;
   counselor_call_count: number;
+  counselor_message_count?: number;
 };
 
 export type CounselorActivity = { type: string; lead_id: number; lead_name: string; text: string; at: string };
 
 export type CounselorDashboard = {
-  counselor: { id: number; name: string; initials: string };
+  counselor: { id: number; name: string; initials: string; can_contact_via_message?: boolean };
   stats: {
     forwarded_leads: number;
     assigned_leads?: number;
     pending_leads?: number;
     contacted_leads?: number;
+    contacted_by_message?: number;
     today_contacted: number;
     pending_counselling: number;
     admission_requests: number;
@@ -228,7 +230,7 @@ export type CounselorDashboard = {
 
 export type CounselorNote = {
   id: number;
-  kind: 'CALL' | 'NOTE';
+  kind: 'CALL' | 'NOTE' | 'MESSAGE';
   kind_display: string;
   body: string;
   counselor_name: string;
@@ -256,11 +258,13 @@ export type CounselorLeadDetail = {
     last_contacted_at?: string | null;
     last_call_duration?: number | null;
     counselor_call_count?: number;
+    counselor_message_count?: number;
   };
   counselor_contact_status: CounselorContactStatus;
   last_contacted_at: string | null;
   last_call_duration: number | null;
   counselor_call_count: number;
+  counselor_message_count?: number;
   interested: {
     call_id: number; course_label: string; expected_admission_year: number | null; recorded_at: string;
   } | null;
@@ -274,7 +278,7 @@ export type CounselorLeadDetail = {
   counselor_notes: CounselorNote[];
   admission_requests: AdmissionRequestItem[];
   has_pending_admission_request: boolean;
-  permissions: { can_edit_lead: false; can_forward: false };
+  permissions: { can_edit_lead: false; can_forward: false; can_contact_via_message?: boolean };
 };
 
 export type CounselorCallTiming = { started_at: string; ended_at: string; duration_seconds: number };
@@ -294,7 +298,8 @@ export const COUNSELOR_ROUTES = ['/counselor', '/counselor/index', '/counselor/a
 
 /** Mirrors the backend rule; the server remains the authority. */
 export function canOfferForward(user: { role?: string | null; capabilities?: UserCapabilities | null } | null | undefined, outcome: string, leadId: number | null | undefined): boolean {
-  return isCallerCapable(user) && outcome.toUpperCase() === 'INTERESTED' && leadId != null;
+  const norm = (outcome || '').toUpperCase();
+  return isCallerCapable(user) && (norm === 'INTERESTED' || norm === 'B2B') && leadId != null;
 }
 
 export function availabilityTone(availability: CounselorAvailability): 'success' | 'warning' | 'danger' | 'muted' {
@@ -304,8 +309,11 @@ export function availabilityTone(availability: CounselorAvailability): 'success'
   return 'muted';
 }
 
-export function contactStatusTone(status?: CounselorContactStatus | string | null): 'warning' | 'success' {
-  return (status || '').toUpperCase() === 'CONTACTED' ? 'success' : 'warning';
+export function contactStatusTone(status?: CounselorContactStatus | string | null): 'warning' | 'success' | 'info' {
+  const s = (status || '').toUpperCase();
+  if (s === 'CONTACTED') return 'success';
+  if (s === 'CONTACTED_BY_MESSAGE') return 'info';
+  return 'warning';
 }
 
 export function formatContactTime(iso?: string | null): string {
@@ -389,6 +397,22 @@ export const counselorApi = {
   addNote: (token: string, leadId: number | string, body: ReturnType<typeof buildCounselorNotePayload>) =>
     apiRequest<{ success: boolean; created: boolean; note: CounselorNote }>(
       `/mobile/counselor/leads/${encodeURIComponent(String(leadId))}/notes/`, { token, method: 'POST', body }),
+  markContactedByMessage: (
+    token: string,
+    leadId: number | string,
+    payload: { notes?: string; client_event_id?: string }
+  ) =>
+    apiRequest<{
+      success: boolean;
+      created: boolean;
+      note: CounselorNote;
+      counselor_contact_status: CounselorContactStatus;
+      message: string;
+    }>(`/mobile/counselor/leads/${encodeURIComponent(String(leadId))}/message-contact/`, {
+      token,
+      method: 'POST',
+      body: payload,
+    }),
   requestAdmission: (token: string, leadId: number | string, message: string) =>
     apiRequest<{ success: boolean; message: string; admission_request: AdmissionRequestItem }>(
       `/mobile/counselor/leads/${encodeURIComponent(String(leadId))}/admission-request/`,

@@ -1,3 +1,4 @@
+import { maskPhoneNumber } from '@/utils/phoneMask';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import {
@@ -546,7 +547,7 @@ export default function CounselorAddLeadScreen() {
                         </Text>
                         <Text style={styles.callerUsername} numberOfLines={1}>
                           @{caller.username}
-                          {caller.phone ? ` · ${caller.phone}` : ''}
+                          {caller.phone ? ` · ${maskPhoneNumber(caller.phone)}` : ''}
                         </Text>
                       </View>
                       <View

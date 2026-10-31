@@ -976,7 +976,8 @@ function ActiveDialer() {
 
     const fallbackLead =
       leads.find(
-        (lead) =>
+        (lead, index) =>
+          index < currentIndex &&
           lead.status === 'pending' &&
           lead.id !== currentLead.id
       );

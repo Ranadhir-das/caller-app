@@ -7,6 +7,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, AppState, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { maskPhoneNumber } from '@/utils/phoneMask';
 
 import { useDialerSession } from '@/context/DialerSessionContext';
 import { useLeads } from '@/context/LeadContext';
@@ -368,7 +369,7 @@ export default function HomeScreen() {
                           styles.followUpPhone
                         }
                       >
-                        {lead.phone}
+                        {maskPhoneNumber(lead.phone)}
                       </Text>
                     </View>
                   </View>
@@ -508,7 +509,7 @@ export default function HomeScreen() {
                   </Text>
       
                   <Text style={styles.activityPhone}>
-                    {call.phone}
+                    {maskPhoneNumber(call.phone)}
                   </Text>
       
                   <Text style={styles.activityTime}>

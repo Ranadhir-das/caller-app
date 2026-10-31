@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { maskPhoneNumber } from '@/utils/phoneMask';
 
 import { useLeads } from '@/context/LeadContext';
 import { CallHistory } from '@/types';
@@ -276,7 +277,7 @@ export default function HistoryScreen() {
             </Text>
 
             <Text style={styles.phone}>
-              {item.phone}
+              {maskPhoneNumber(item.phone)}
             </Text>
             <Text style={styles.phone}>
               {item.isExternal ? 'Direct Call' : 'Lead Call'} • {item.durationSeconds ?? 0}s

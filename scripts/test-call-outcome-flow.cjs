@@ -35,6 +35,7 @@ function compile(file, mocks, cache = {}) {
     if (name === '@/services/courses' || name === './courses') return compile('src/services/courses.ts', mocks, cache);
     if (name === '@/services/callOutcome') return compile('src/services/callOutcome.ts', mocks, cache);
     if (name === '@/services/counselor') return compile('src/services/counselor.ts', { ...mocks, './api': mocks['@/services/api'] }, cache);
+    if (name === '@/services/capabilities' || name === './capabilities') return compile('src/services/capabilities.ts', mocks, cache);
     throw new Error(`Unexpected dependency (recording must not be imported): ${name}`);
   };
   const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
@@ -76,7 +77,7 @@ async function screen(options = {}) {
     '@/context/AuthContext': { useAuth: () => ({ user: { id: 1, username: 'Caller', role: options.role }, token: 'session' }) },
     '@/context/DialerSessionContext': { useDialerSession: () => ({ recordCall() {} }) },
     '@/context/LeadContext': { useLeads: () => ({ leads: [], refresh: options.refresh || (() => Promise.resolve()),
-      removeResolvedFollowUps() {}, addCallHistory: value => history.push(value), getNextPendingLead: () => undefined }) },
+      removeResolvedFollowUps() {}, addCallHistory: value => history.push(value), getNextPendingLead: () => undefined, markLeadCompleted: () => {} }) },
     'expo-router': { useLocalSearchParams: () => ({ draft_id: base.id }), router: { replace: value => navigation.push(value) } },
     '@react-native-community/datetimepicker': { __esModule: true, default: 'DateTimePicker' },
     '@/services/whatsapp': { launchWhatsAppHandoff: async () => ({ success: true }) },
@@ -250,7 +251,28 @@ test('caller Interested does not require follow-up and saves successfully withou
   assert.equal(app.alerts.at(-1)[0], 'Outcome saved');
 });
 
-test('non-Interested caller outcomes never offer Forward to Counselor', async () => {
+test('caller B2B saves without course/year and without follow-up, then offers optional Forward to Counselor', async () => {
+  const app = await screen({ role: 'CALLER' });
+  button(app.render(), 'B2B').props.onPress();
+  await button(app.render(), 'Save Outcome').props.onPress();
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.calls[0].body.outcome, 'B2B');
+  assert.equal('selected_course' in app.calls[0].body, false);
+  assert.equal('expected_admission_year' in app.calls[0].body, false);
+  assert.equal('callback_at' in app.calls[0].body, false);
+  let forward = nodes(app.render()).find(n => n.type === 'ForwardCounselorModal');
+  assert.equal(forward.props.visible, false);
+  const [title, , buttons] = app.alerts.at(-1);
+  assert.equal(title, 'Outcome saved');
+  buttons.find(b => b.text === 'Continue').onPress();
+  forward = nodes(app.render()).find(n => n.type === 'ForwardCounselorModal');
+  assert.equal(forward.props.visible, true);
+  assert.equal(forward.props.leadId, 7);
+  forward.props.onClose();
+  assert.equal(app.navigation.length, 1);
+});
+
+test('non-Interested and non-B2B caller outcomes never offer Forward to Counselor', async () => {
   const app = await screen({ role: 'CALLER' });
   button(app.render(), 'Not Interested').props.onPress();
   await button(app.render(), 'Save Outcome').props.onPress();

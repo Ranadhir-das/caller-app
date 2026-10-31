@@ -110,6 +110,7 @@ export default function CallOutcomeScreen() {
     addCallHistory,
     removeResolvedFollowUps,
     getNextPendingLead,
+    markLeadCompleted,
   } = useLeads();
 
   const { recordCall } = useDialerSession();
@@ -328,7 +329,7 @@ export default function CallOutcomeScreen() {
     if (selectedOutcome === 'interested' && !interestedReady) { setCourseSteps(true); return; }
 
     // Caller mandatory follow-up check whenever follow-up is available (not required for interested leads)
-    if (isCaller && selectedOutcome !== 'interested' && allowsContact(selectedOutcome) && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome))) {
+    if (isCaller && selectedOutcome !== 'interested' && selectedOutcome !== 'b2b' && allowsContact(selectedOutcome) && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome))) {
       if (!followUpDate || !hasSelectedDate) {
         Alert.alert('Follow-up Date Required', 'Please select a follow-up date for this lead.');
         return;
@@ -414,6 +415,14 @@ export default function CallOutcomeScreen() {
       followUpDate: saved.followup?.scheduled_at, followUpStatus: saved.followup?.status,
     };
     try {
+      if (draft.leadId && markLeadCompleted) {
+        markLeadCompleted(
+          draft.leadId,
+          mobileStatus,
+          payload.notes,
+          saved.followup?.scheduled_at
+        );
+      }
       removeResolvedFollowUps(saved.completed_followup_ids || []);
       addCallHistory(newCall);
       if (!draft.direct) recordCall(mobileStatus as Parameters<typeof recordCall>[0]);
@@ -656,9 +665,9 @@ export default function CallOutcomeScreen() {
           <View style={styles.followUpCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={styles.followUpTitle}>
-                📅 Follow-up Date & Time {isCaller && selectedOutcome !== 'interested' && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && <Text style={{ color: colors.danger }}>*</Text>}
+                📅 Follow-up Date & Time {isCaller && selectedOutcome !== 'interested' && selectedOutcome !== 'b2b' && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && <Text style={{ color: colors.danger }}>*</Text>}
               </Text>
-              {isCaller && selectedOutcome !== 'interested' && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && (
+              {isCaller && selectedOutcome !== 'interested' && selectedOutcome !== 'b2b' && (!apostille || ['call_back', 'follow_up_required'].includes(selectedOutcome)) && (
                 <View style={{ backgroundColor: colors.accentSoft, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Required</Text>
                 </View>

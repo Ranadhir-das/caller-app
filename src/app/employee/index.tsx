@@ -80,6 +80,13 @@ export default function EmployeeHomeScreen() {
             <Text style={styles.actionSubtitle}>Activity & history</Text>
           </Pressable>
           {isCallerCapable(user) && !user?.needs_onboarding && (
+            <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/performance' as never)}>
+              <View style={styles.actionIcon}><Text style={styles.actionIconText}>📊</Text></View>
+              <Text style={styles.actionTitle}>Performance</Text>
+              <Text style={styles.actionSubtitle}>Calls & talk time</Text>
+            </Pressable>
+          )}
+          {isCallerCapable(user) && !user?.needs_onboarding && (
             <Pressable accessibilityRole="button" style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]} onPress={() => router.push('/direct-dialer')}>
               <View style={styles.actionIcon}><Text style={styles.actionIconText}>⌨️</Text></View>
               <Text style={styles.actionTitle}>Direct Dialer</Text>

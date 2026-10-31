@@ -221,6 +221,13 @@ type LeadContextType = {
     data: UpdateLeadData
   ) => void;
 
+  markLeadCompleted: (
+    leadId: string,
+    status: LeadStatus,
+    notes?: string,
+    followUpDate?: string
+  ) => void;
+
   callHistory: CallHistory[];
 
   addCallHistory: (
@@ -274,6 +281,31 @@ export function LeadProvider({
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const refresh = useCallback(() => refreshRef.current(), []);
   const resolvedIds = useRef(new Set<number>());
+  const localCompletedRef = useRef<Map<string, { status: LeadStatus; timestamp: number }>>(new Map());
+
+  const markLeadCompleted = useCallback((
+    leadId: string,
+    status: LeadStatus,
+    notes?: string,
+    followUpDate?: string
+  ) => {
+    if (!leadId) return;
+    localCompletedRef.current.set(String(leadId), { status, timestamp: Date.now() });
+
+    setLeads((currentLeads) =>
+      currentLeads.map((lead) => {
+        if (lead.id !== String(leadId)) {
+          return lead;
+        }
+        return {
+          ...lead,
+          status,
+          notes: notes !== undefined ? notes : lead.notes,
+          followUpDate: followUpDate !== undefined ? followUpDate : lead.followUpDate,
+        };
+      })
+    );
+  }, []);
   useEffect(() => {
     let cancelled = false;
     let inFlight: Promise<void> | null = null;
@@ -305,10 +337,20 @@ export function LeadProvider({
           loadFollowUps(sessionToken),
           loadFollowUps(sessionToken, true),
         ]);
-        if (cancelled || reloadRequested) return;
+        if (cancelled) return;
         setLeads(leadResponse.map(lead => {
           const pending = followUpResponse.find(item => item.lead === lead.id);
-          return { ...mapApiLead(lead), followUpDate: pending?.scheduled_at };
+          const mapped = { ...mapApiLead(lead), followUpDate: pending?.scheduled_at };
+          const localUpdate = localCompletedRef.current.get(mapped.id);
+          if (localUpdate) {
+            const serverUpdatedAt = new Date(lead.updated_at).getTime();
+            if (!isNaN(serverUpdatedAt) && serverUpdatedAt > localUpdate.timestamp) {
+              localCompletedRef.current.delete(mapped.id);
+            } else if (mapped.status === 'pending' && localUpdate.status !== 'pending') {
+              mapped.status = localUpdate.status;
+            }
+          }
+          return mapped;
         }));
         setDashboardFollowUps(dueFollowUpResponse.filter(item => !resolvedIds.current.has(item.id)));
         // This completed refresh is newer than every successful local mutation.
@@ -367,6 +409,8 @@ export function LeadProvider({
     id: string,
     data: UpdateLeadData
   ) => {
+    localCompletedRef.current.set(String(id), { status: data.status, timestamp: Date.now() });
+
     // ----------------------------------------------
     // UPDATE UI IMMEDIATELY
     // ----------------------------------------------
@@ -450,7 +494,7 @@ export function LeadProvider({
   // GET NEXT PENDING LEAD
   // ------------------------------------------------
 
-  const getNextPendingLead = (
+  const getNextPendingLead = useCallback((
     currentLeadId?: string
   ) => {
     const currentIndex =
@@ -468,7 +512,8 @@ export function LeadProvider({
           index >
             currentIndex &&
           lead.status ===
-            'pending'
+            'pending' &&
+          !localCompletedRef.current.has(lead.id)
       );
 
     if (nextLead) {
@@ -476,13 +521,15 @@ export function LeadProvider({
     }
 
     return leads.find(
-      (lead) =>
+      (lead, index) =>
+        index < currentIndex &&
         lead.status ===
           'pending' &&
         lead.id !==
-          currentLeadId
+          currentLeadId &&
+        !localCompletedRef.current.has(lead.id)
     );
-  };
+  }, [leads]);
 
   // ------------------------------------------------
   // GET UPCOMING FOLLOW-UPS
@@ -721,6 +768,7 @@ export function LeadProvider({
         releaseClaim,
         markCallStarted,
         updateLead,
+        markLeadCompleted,
         callHistory,
         addCallHistory,
         getNextPendingLead,
@@ -732,6 +780,8 @@ export function LeadProvider({
         refreshing,
         refreshError,
         leads,
+        markLeadCompleted,
+        getNextPendingLead,
         dashboardFollowUps,
         availableLeads,
         loadingAvailable,

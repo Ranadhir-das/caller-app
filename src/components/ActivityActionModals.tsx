@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import React, { useState, useEffect } from 'react';
 import {
   Modal,
@@ -397,6 +398,7 @@ export function EndShiftModal({
   elapsedBreak,
   elapsedGross,
   busy,
+  onRequestEarlyEnd,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -405,6 +407,7 @@ export function EndShiftModal({
   elapsedBreak: number;
   elapsedGross: number;
   busy: boolean;
+  onRequestEarlyEnd?: () => void;
 }) {
   const { colors, mode } = useAppTheme();
   const styles = useAppStyles(createModalStyles);
@@ -483,6 +486,53 @@ export function EndShiftModal({
           </View>
 
           {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
+
+          {/* Under 8 Hours Notice & Early Shift-End Request shortcut */}
+          {(elapsedNet < 28800 || !!errorMsg) && (
+            <View
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 10,
+                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                borderWidth: 1,
+                borderColor: 'rgba(245, 158, 11, 0.3)',
+                gap: 8,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  lineHeight: 16,
+                  color: colors.text,
+                }}
+              >
+                ⚠️ Standard shifts require 8 hours of net work. If you need to leave early, submit an Early Shift-End Request for manager approval.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 8,
+                  backgroundColor: '#a855f7',
+                  alignSelf: 'flex-start',
+                }}
+                onPress={() => {
+                  onClose();
+                  if (onRequestEarlyEnd) {
+                    onRequestEarlyEnd();
+                  } else {
+                    router.push('/employee/attendance');
+                  }
+                }}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                  Request Early Shift-End Approval →
+                </Text>
+              </Pressable>
+            </View>
+          )}
 
           {/* Buttons */}
           <View style={styles.buttonsRow}>

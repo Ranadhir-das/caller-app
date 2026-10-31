@@ -30,13 +30,60 @@ import {
   PauseModal,
   SwitchCategoryModal,
 } from '@/components/ActivityActionModals';
+import { AttendanceRequestModal } from '@/components/AttendanceRequestModal';
+import { openLocationSettings } from '@/services/location';
 
 type PresetType = 'today' | 'yesterday' | 'last_7_days' | 'this_month';
+
+function formatSessionDate(dateStr?: string | null): string {
+  if (!dateStr) return 'Unknown Date';
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-IN', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+      }
+    }
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-IN', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    }
+  } catch {
+    // fallback
+  }
+  return String(dateStr);
+}
+
+function formatEventTime(iso?: string | null): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch {
+    return '';
+  }
+}
+
 
 export default function ActivityScreen() {
   const { colors } = useAppTheme();
   const styles = useAppStyles(createStyles);
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const {
     session,
@@ -54,6 +101,7 @@ export default function ActivityScreen() {
     breakElapsed,
     breakWarningExceeded,
     refreshCurrent,
+    startShift,
     pause,
     resume,
     switchCategory,
@@ -73,6 +121,7 @@ export default function ActivityScreen() {
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
   const [switchModalOpen, setSwitchModalOpen] = useState(false);
   const [endShiftModalOpen, setEndShiftModalOpen] = useState(false);
+  const [earlyEndModalOpen, setEarlyEndModalOpen] = useState(false);
 
   // Load history data
   const loadHistory = useCallback(
@@ -84,7 +133,7 @@ export default function ActivityScreen() {
         const res = await activityApi.getActivityHistory(token, { preset });
         setHistoryData(res);
         // By default expand first session
-        if (res.sessions.length > 0) {
+        if (res?.sessions && Array.isArray(res.sessions) && res.sessions.length > 0) {
           setExpandedSessions((prev) => ({
             ...prev,
             [res.sessions[0].id]: true,
@@ -123,11 +172,56 @@ export default function ActivityScreen() {
     }));
   };
 
+  const handleStartShift = async () => {
+    try {
+      await startShift();
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to start shift. Please try again.';
+      const isGpsError =
+        errorMsg.includes('GPS accuracy') ||
+        errorMsg.includes('POOR_GPS_ACCURACY') ||
+        errorMsg.includes('geofence') ||
+        errorMsg.includes('GEOFENCE_VIOLATION') ||
+        errorMsg.includes('Device location services') ||
+        errorMsg.includes('Precise location') ||
+        errorMsg.includes('MISSING_GPS_READING');
+
+      if (isGpsError) {
+        Alert.alert('Location Verification', errorMsg, [
+          { text: 'Settings', onPress: () => void openLocationSettings() },
+          { text: 'OK', style: 'cancel' },
+        ]);
+      } else {
+        Alert.alert('Start Shift Failed', errorMsg);
+      }
+    }
+  };
+
   const handleResume = async () => {
     try {
       await resume();
-    } catch (e: unknown) {
-      Alert.alert('Resume failed', e instanceof Error ? e.message : 'Please try again.');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to resume work. Please try again.';
+      const isGpsError =
+        errorMsg.includes('GPS accuracy') ||
+        errorMsg.includes('POOR_GPS_ACCURACY') ||
+        errorMsg.includes('geofence') ||
+        errorMsg.includes('GEOFENCE_VIOLATION') ||
+        errorMsg.includes('Device location services') ||
+        errorMsg.includes('Precise location') ||
+        errorMsg.includes('MISSING_GPS_READING') ||
+        errorMsg.includes('MISSING_TIMESTAMP') ||
+        errorMsg.includes('STALE_GPS_READING') ||
+        errorMsg.includes('office');
+
+      if (isGpsError) {
+        Alert.alert('Location Verification', errorMsg, [
+          { text: 'Settings', onPress: () => void openLocationSettings() },
+          { text: 'OK', style: 'cancel' },
+        ]);
+      } else {
+        Alert.alert('Resume Failed', errorMsg);
+      }
     }
   };
 
@@ -141,8 +235,28 @@ export default function ActivityScreen() {
         )}.`
       );
       void loadHistory(activePreset);
-    } catch (e: unknown) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Could not complete shift.');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Could not complete shift.';
+      const isGpsError =
+        errorMsg.includes('GPS accuracy') ||
+        errorMsg.includes('POOR_GPS_ACCURACY') ||
+        errorMsg.includes('geofence') ||
+        errorMsg.includes('GEOFENCE_VIOLATION') ||
+        errorMsg.includes('Device location services') ||
+        errorMsg.includes('Precise location') ||
+        errorMsg.includes('MISSING_GPS_READING') ||
+        errorMsg.includes('MISSING_TIMESTAMP') ||
+        errorMsg.includes('STALE_GPS_READING') ||
+        errorMsg.includes('office');
+
+      if (isGpsError) {
+        Alert.alert('Location Verification', errorMsg, [
+          { text: 'Settings', onPress: () => void openLocationSettings() },
+          { text: 'OK', style: 'cancel' },
+        ]);
+      } else {
+        Alert.alert('End Shift Blocked', errorMsg);
+      }
     }
   };
 
@@ -322,17 +436,40 @@ export default function ActivityScreen() {
           </View>
         ) : (
           <View style={styles.card}>
-            <Text style={styles.cardHeading}>No active shift</Text>
-            <Text style={styles.cardSubtitle}>
-              Work tracking starts automatically when you complete photo attendance check-in.
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              style={[styles.primaryBtn, { marginTop: 6 }]}
-              onPress={() => router.push('/employee/attendance' as never)}
-            >
-              <Text style={styles.primaryBtnText}>Go to Attendance Check-In</Text>
-            </Pressable>
+            {user?.shift_workflow_enabled ? (
+              <>
+                <Text style={styles.cardHeading}>No Active Shift</Text>
+                <Text style={styles.cardSubtitle}>
+                  You are signed in. When you are ready to begin your workday, explicitly start your shift below.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={mutating}
+                  style={[styles.primaryBtn, { marginTop: 10 }, mutating && { opacity: 0.6 }]}
+                  onPress={handleStartShift}
+                >
+                  {mutating ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Start Shift</Text>
+                  )}
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={styles.cardHeading}>No Active Shift</Text>
+                <Text style={styles.cardSubtitle}>
+                  Work tracking starts automatically when you complete photo attendance check-in.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  style={[styles.primaryBtn, { marginTop: 10 }]}
+                  onPress={() => router.push('/employee/attendance' as never)}
+                >
+                  <Text style={styles.primaryBtnText}>Go to Attendance Check-In</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         )}
 
@@ -417,7 +554,10 @@ export default function ActivityScreen() {
 
         {/* Performance Points Card (Clearly Isolated) */}
         {historyData?.performance_points && (
-          <View
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View points breakup"
+            onPress={() => router.push('/points-breakup' as never)}
             style={[
               styles.card,
               { backgroundColor: colors.accentSoft, borderColor: colors.accent + '44' },
@@ -437,7 +577,12 @@ export default function ActivityScreen() {
             <Text style={styles.pointsDisclaimer}>
               {historyData.performance_points.note}
             </Text>
-          </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 8 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.accent }}>
+                View Points Breakup by Work →
+              </Text>
+            </View>
+          </Pressable>
         )}
 
         {/* ======================================================== */}
@@ -497,7 +642,20 @@ export default function ActivityScreen() {
         elapsedBreak={elapsedBreak}
         elapsedGross={elapsedGross}
         busy={mutating}
+        onRequestEarlyEnd={() => setEarlyEndModalOpen(true)}
       />
+
+      {earlyEndModalOpen && (
+        <AttendanceRequestModal
+          visible={earlyEndModalOpen}
+          onClose={() => setEarlyEndModalOpen(false)}
+          onSuccess={() => {
+            void refreshCurrent();
+            void loadHistory(activePreset);
+          }}
+          initialType="EARLY_SHIFT_END"
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -517,12 +675,7 @@ function SessionHistoryCard({
   const { colors } = useAppTheme();
   const styles = useAppStyles(createStyles);
 
-  const formattedDate = new Date(session.date).toLocaleDateString('en-IN', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  const formattedDate = formatSessionDate(session.date);
 
   return (
     <View style={styles.historyCard}>
@@ -559,13 +712,13 @@ function SessionHistoryCard({
 
           <View style={[styles.rowAlign, { marginTop: 4, gap: 12 }]}>
             <Text style={styles.historyDurationSnippet}>
-              Net: <Text style={{ color: colors.accent, fontWeight: '700' }}>{formatDuration(session.net_seconds)}</Text>
+              Net: <Text style={{ color: colors.accent, fontWeight: '700' }}>{formatDuration(session.net_seconds ?? 0)}</Text>
             </Text>
             <Text style={styles.historyDurationSnippet}>
-              Break: {formatDuration(session.break_seconds)}
+              Break: {formatDuration(session.break_seconds ?? 0)}
             </Text>
             <Text style={styles.historyDurationSnippet}>
-              Gross: {formatDuration(session.gross_seconds)}
+              Gross: {formatDuration(session.gross_seconds ?? 0)}
             </Text>
           </View>
         </View>
@@ -602,11 +755,7 @@ function TimelineItem({
   const { colors } = useAppTheme();
   const styles = useAppStyles(createStyles);
 
-  const formatTime = (iso?: string | null) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  };
+  const formatTime = formatEventTime;
 
   let dotColor = colors.accent;
   let title = '';
@@ -622,13 +771,13 @@ function TimelineItem({
     dotColor = event.category?.color_hex || colors.accent;
     title = `Segment: ${event.category?.name || 'Work'}`;
     subtitle = `${formatTime(event.started_at)} – ${formatTime(event.ended_at) || 'Present'}`;
-    durationSnippet = formatDuration(event.duration_seconds);
+    durationSnippet = formatDuration(event.duration_seconds ?? 0);
     noteText = event.note;
   } else if (event.type === 'BREAK') {
     dotColor = event.exceeded ? colors.danger : '#EAB308';
     title = `Break: ${event.reason?.name || 'Break'}`;
     subtitle = `${formatTime(event.started_at)} – ${formatTime(event.ended_at) || 'Present'}`;
-    durationSnippet = formatDuration(event.duration_seconds);
+    durationSnippet = formatDuration(event.duration_seconds ?? 0);
     if (event.exceeded) {
       durationSnippet += ` (Exceeded ${event.warning_threshold_minutes}m)`;
     }
@@ -990,3 +1139,25 @@ const createStyles = (c: AppColors) =>
     },
   });
 
+
+
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
+  const { colors } = useAppTheme();
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, padding: 20, justifyContent: 'center', alignItems: 'center' }}>
+      <AnimatedBackButton style={{ position: 'absolute', top: 50, left: 20 }} />
+      <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+        Workforce Activity
+      </Text>
+      <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: 20 }}>
+        {error?.message || 'An unexpected error occurred while loading activity.'}
+      </Text>
+      <Pressable
+        onPress={retry}
+        style={{ backgroundColor: colors.accent, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10 }}
+      >
+        <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Retry</Text>
+      </Pressable>
+    </SafeAreaView>
+  );
+}

@@ -1,6 +1,6 @@
 import { isCallerCapable } from '@/services/capabilities';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   AppState,
@@ -143,9 +143,27 @@ function PointsCard({ token }: { token: string }) {
 
   return (
     <View style={[styles.card, cardStyles.compactCard]}>
-      {/* Top Header without down arrow */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={styles.heading}>My points</Text>
+      {/* Compact Top Header with Breakup Pill & Refresh */}
+      <View style={cardStyles.headerRow}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={cardStyles.heading}>My Points</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View points breakup"
+            onPress={() => router.push('/points-breakup' as never)}
+            style={cardStyles.breakupPill}
+          >
+            <Text style={cardStyles.breakupPillText}>Breakup ›</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View calling performance"
+            onPress={() => router.push('/performance' as never)}
+            style={[cardStyles.breakupPill, { backgroundColor: colors.accent + '16', borderColor: colors.accent + '30' }]}
+          >
+            <Text style={[cardStyles.breakupPillText, { color: colors.accent }]}>Performance ›</Text>
+          </Pressable>
+        </View>
 
         <Pressable
           accessibilityRole="button"
@@ -155,78 +173,76 @@ function PointsCard({ token }: { token: string }) {
             void load();
             if (expanded) void loadProgress(timeframe);
           }}
-          style={{ minHeight: 36, justifyContent: 'center', paddingHorizontal: 4 }}
+          hitSlop={8}
+          style={{ justifyContent: 'center', paddingHorizontal: 4 }}
         >
           {loading || progressLoading ? (
             <ActivityIndicator color={colors.accent} size="small" />
           ) : (
-            <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>Refresh</Text>
+            <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>Refresh</Text>
           )}
         </Pressable>
       </View>
 
-      {/* Separate Performance Points and Peer Appreciation Display */}
+      {/* Sleek Tappable Metrics Row -> Opens Points Breakup */}
       {summary && (
-        <View style={{ marginVertical: 8, gap: 10 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            {/* Performance Points */}
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={[styles.subtitle, { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' }]}>
-                Performance Points
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="View points breakup"
+          onPress={() => router.push('/points-breakup' as never)}
+          style={cardStyles.metricsRow}
+        >
+          {/* Performance Points */}
+          <View style={cardStyles.metricBlock}>
+            <Text style={cardStyles.metricLabel}>PERFORMANCE</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 1 }}>
+              <Text style={cardStyles.metricValue}>
+                {summary.performance_points ?? summary.lifetime_points ?? summary.total_points}
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-                <Text style={{ fontSize: 26, fontWeight: '900', color: colors.text, lineHeight: 30 }}>
-                  {summary.performance_points ?? summary.lifetime_points ?? summary.total_points}
-                </Text>
-                <Text style={[styles.subtitle, { fontSize: 11 }]}>
-                  ({summary.weekly_points} this week)
-                </Text>
-              </View>
-            </View>
-
-            {/* Peer Appreciation */}
-            <View style={{ flex: 1, borderLeftWidth: 1, borderLeftColor: colors.border, paddingLeft: 12 }}>
-              <Text style={[styles.subtitle, { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' }]}>
-                Peer Appreciation
+              <Text style={cardStyles.metricUnit}>pts</Text>
+              <Text style={cardStyles.metricSub}>
+                ({summary.weekly_points >= 0 ? `+${summary.weekly_points}` : summary.weekly_points} wk)
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 4 }}>
-                {data?.peer_appreciation?.average_score !== null && data?.peer_appreciation?.average_score !== undefined ? (
-                  <>
-                    <Text style={{ fontSize: 26, fontWeight: '900', color: colors.primary, lineHeight: 30 }}>
-                      {data.peer_appreciation.average_score}
-                    </Text>
-                    <Text style={[styles.subtitle, { fontSize: 11 }]}>
-                      / 10 ({data.peer_appreciation.review_count} {data.peer_appreciation.review_count === 1 ? 'review' : 'reviews'})
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={{ fontSize: 22, fontWeight: '700', color: colors.muted, lineHeight: 30 }}>
-                      —
-                    </Text>
-                    <Text style={[styles.subtitle, { fontSize: 11 }]}>
-                      / 10 (No reviews)
-                    </Text>
-                  </>
-                )}
-              </View>
             </View>
           </View>
-        </View>
+
+          {/* Divider */}
+          <View style={cardStyles.metricDivider} />
+
+          {/* Peer Appreciation */}
+          <View style={cardStyles.metricBlock}>
+            <Text style={cardStyles.metricLabel}>PEER RATING</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 1 }}>
+              {data?.peer_appreciation?.average_score !== null && data?.peer_appreciation?.average_score !== undefined ? (
+                <>
+                  <Text style={[cardStyles.metricValue, { color: colors.primary }]}>
+                    ★ {data.peer_appreciation.average_score}
+                  </Text>
+                  <Text style={cardStyles.metricSub}>
+                    /10 ({data.peer_appreciation.review_count})
+                  </Text>
+                </>
+              ) : (
+                <Text style={cardStyles.metricSub}>No reviews</Text>
+              )}
+            </View>
+          </View>
+
+          <Text style={cardStyles.rowChevron}>›</Text>
+        </Pressable>
       )}
 
-      {/* Expand / Collapse Bar with Down Arrow */}
+      {/* Slim Expand / Collapse Bar */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Toggle caller progress chart"
         onPress={() => setExpanded((prev) => !prev)}
         style={cardStyles.expandBar}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={cardStyles.expandBarTitle}>Caller Progress</Text>
-          <Text style={cardStyles.expandBarSub}>({timeframeLabel})</Text>
-        </View>
-        <Text style={cardStyles.arrowText}>{expanded ? '▲' : '▼'}</Text>
+        <Text style={cardStyles.expandBarTitle}>
+          Caller Progress ({timeframeLabel})
+        </Text>
+        <Text style={cardStyles.arrowText}>{expanded ? '▲ Hide' : '▼ Chart'}</Text>
       </Pressable>
 
       {/* Expanded All Callers Bar Chart Section */}
@@ -372,36 +388,105 @@ function PointsCard({ token }: { token: string }) {
 const createCardStyles = (colors: AppColors) =>
   StyleSheet.create({
     compactCard: {
-      paddingVertical: 12,
-      paddingHorizontal: 14,
-      marginBottom: 12,
-      gap: 6,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      marginBottom: 8,
+      gap: 4,
     },
-    arrowText: {
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      minHeight: 26,
+    },
+    heading: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: colors.text,
+      letterSpacing: -0.2,
+    },
+    breakupPill: {
+      backgroundColor: colors.primary + '16',
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.primary + '30',
+    },
+    breakupPillText: {
       fontSize: 11,
       fontWeight: '800',
       color: colors.primary,
+    },
+    refreshText: {
+      color: colors.primary,
+      fontWeight: '700',
+      fontSize: 12,
+    },
+    metricsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    metricBlock: {
+      flex: 1,
+    },
+    metricLabel: {
+      fontSize: 9,
+      fontWeight: '800',
+      color: colors.muted,
+      letterSpacing: 0.5,
+    },
+    metricValue: {
+      fontSize: 17,
+      fontWeight: '900',
+      color: colors.text,
+      lineHeight: 20,
+    },
+    metricUnit: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: colors.primary,
+    },
+    metricSub: {
+      fontSize: 10,
+      color: colors.muted,
+      fontWeight: '600',
+    },
+    metricDivider: {
+      width: 1,
+      height: 22,
+      backgroundColor: colors.border,
+      marginHorizontal: 8,
+    },
+    rowChevron: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: colors.primary,
+      marginLeft: 4,
     },
     expandBar: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingVertical: 7,
-      paddingHorizontal: 10,
-      marginTop: 4,
-      borderRadius: 10,
-      backgroundColor: colors.surfaceMuted,
-      borderWidth: 1,
-      borderColor: colors.border,
+      paddingVertical: 4,
+      paddingHorizontal: 6,
+      borderRadius: 6,
     },
     expandBarTitle: {
-      fontSize: 13,
+      fontSize: 11,
       fontWeight: '700',
-      color: colors.text,
-    },
-    expandBarSub: {
-      fontSize: 12,
       color: colors.muted,
+    },
+    arrowText: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: colors.primary,
     },
     progressSection: {
       marginTop: 10,
