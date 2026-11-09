@@ -964,7 +964,7 @@ const createStyles = (colors: AppColors) =>
 
     list: {
       paddingTop: 14,
-      paddingBottom: 24,
+      paddingBottom: 110,
     },
 
     leadCard: {

@@ -36,16 +36,68 @@ export default function LeaveScreen() {
           {openPicker === 'start' && <DateTimePicker themeVariant={mode} value={start || new Date()} mode="date" display={Platform.OS === 'android' ? 'default' : 'spinner'} minimumDate={new Date()} onChange={(_, d) => { setOpenPicker(null); if (d) { setStart(d); if (end && end < d) setEnd(null); } }} />}
           {openPicker === 'end' && <DateTimePicker themeVariant={mode} value={end || start || new Date()} mode="date" display={Platform.OS === 'android' ? 'default' : 'spinner'} minimumDate={start || new Date()} onChange={(_, d) => { setOpenPicker(null); if (d) setEnd(d); }} />}
         </View>
-        {data?.leaves.map(l => (
-          <View key={l.id} style={styles.card}>
-            <Text style={styles.label}>{l.start_date} to {l.end_date} - {l.status}</Text>
-            <Text style={styles.subtitle}>{l.reason}</Text>
-            {!!l.review_note && <Text style={styles.subtitle}>{l.review_note}</Text>}
-            {l.status === 'PENDING' && <ActionButton title="Cancel request" busy={busy} onPress={() => run(async () => { await request(`leaves/${l.id}/`, undefined, 'DELETE'); })} />}
+        {data?.leaves && data.leaves.length > 0 && (
+          <View style={{ gap: 10, marginTop: 4 }}>
+            <Text style={styles.heading}>My Leave Requests</Text>
+            {data.leaves.map(l => {
+              const isPending = l.status === 'PENDING';
+              const isApproved = l.status === 'APPROVED';
+              const badgeBg = isPending ? colors.warningSoft : isApproved ? colors.successSoft : colors.dangerSoft;
+              const badgeColor = isPending ? colors.warning : isApproved ? (mode === 'dark' ? colors.success : '#047857') : colors.danger;
+
+              return (
+                <View key={l.id} style={styles.card}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={[styles.label, { fontSize: 15 }]}>{l.start_date} to {l.end_date}</Text>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: badgeBg }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: badgeColor }}>{l.status}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.subtitle}>{l.reason}</Text>
+                  {!!l.review_note && (
+                    <View style={{ padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted }}>
+                      <Text style={[styles.subtitle, { fontStyle: 'italic' }]}>&ldquo;{l.review_note}&rdquo;</Text>
+                    </View>
+                  )}
+                  {l.status === 'PENDING' && (
+                    <ActionButton
+                      title="Cancel request"
+                      busy={busy}
+                      onPress={() => run(async () => { await request(`leaves/${l.id}/`, undefined, 'DELETE'); })}
+                    />
+                  )}
+                </View>
+              );
+            })}
           </View>
-        ))}
-        <Text style={styles.heading}>Upcoming holidays</Text>
-        {data?.holidays.map(h => <Text key={h.id} style={styles.subtitle}>{h.date} - {h.name}</Text>)}
+        )}
+
+        <View style={{ gap: 10, marginTop: 4 }}>
+          <Text style={styles.heading}>Upcoming Holidays</Text>
+          {data?.holidays && data.holidays.length > 0 ? (
+            <View style={styles.card}>
+              {data.holidays.map((h, i) => (
+                <View
+                  key={h.id}
+                  style={[
+                    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
+                    i > 0 && { borderTopWidth: 1, borderTopColor: colors.border },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={{ fontSize: 16 }}>🌴</Text>
+                    <Text style={[styles.label, { fontWeight: '600' }]}>{h.name}</Text>
+                  </View>
+                  <View style={{ backgroundColor: colors.accentSoft, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>{h.date}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.subtitle}>No upcoming holidays scheduled.</Text>
+          )}
+        </View>
       </KeyboardAwareContainer>
     </SafeAreaView>
   );

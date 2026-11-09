@@ -108,12 +108,14 @@ export function AttendanceRequestModal({
 
   useEffect(() => {
     if (visible) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setRequestType(initialType);
       setDateStr(getTodayString());
       setReason('');
       setTimeDetail('');
       setErrorMsg('');
       setSubmitting(false);
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [visible, initialType]);
 
@@ -230,14 +232,20 @@ export function AttendanceRequestModal({
                 style={[
                   styles.typeOption,
                   requestType === 'LATE_ARRIVAL' && styles.typeOptionActive,
-                  requestType === 'LATE_ARRIVAL' && { borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.12)' },
+                  requestType === 'LATE_ARRIVAL' && {
+                    borderColor: colors.warning,
+                    backgroundColor: colors.warningSoft,
+                  },
                 ]}
                 onPress={() => setRequestType('LATE_ARRIVAL')}
               >
                 <Text
                   style={[
                     styles.typeOptionText,
-                    requestType === 'LATE_ARRIVAL' && { color: '#f59e0b', fontWeight: '700' },
+                    requestType === 'LATE_ARRIVAL' && {
+                      color: colors.warning,
+                      fontWeight: '700',
+                    },
                   ]}
                 >
                   ⏰ Late Arrival
@@ -249,14 +257,20 @@ export function AttendanceRequestModal({
                 style={[
                   styles.typeOption,
                   requestType === 'EARLY_SHIFT_END' && styles.typeOptionActive,
-                  requestType === 'EARLY_SHIFT_END' && { borderColor: '#a855f7', backgroundColor: 'rgba(168, 85, 247, 0.12)' },
+                  requestType === 'EARLY_SHIFT_END' && {
+                    borderColor: mode === 'dark' ? colors.wavePurple : '#7C3AED',
+                    backgroundColor: colors.accentSoft,
+                  },
                 ]}
                 onPress={() => setRequestType('EARLY_SHIFT_END')}
               >
                 <Text
                   style={[
                     styles.typeOptionText,
-                    requestType === 'EARLY_SHIFT_END' && { color: '#c084fc', fontWeight: '700' },
+                    requestType === 'EARLY_SHIFT_END' && {
+                      color: mode === 'dark' ? colors.wavePurple : '#6B21A8',
+                      fontWeight: '700',
+                    },
                   ]}
                 >
                   🚪 Early Shift End
@@ -338,15 +352,15 @@ export function AttendanceRequestModal({
                 disabled={submitting}
                 style={[
                   styles.button,
-                  { backgroundColor: colors.accent },
+                  { backgroundColor: colors.primary },
                   submitting && { opacity: 0.6 },
                 ]}
                 onPress={handleSubmit}
               >
                 {submitting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color={colors.onPrimary} />
                 ) : (
-                  <Text style={styles.submitButtonText}>Submit Request</Text>
+                  <Text style={[styles.submitButtonText, { color: colors.onPrimary }]}>Submit Request</Text>
                 )}
               </Pressable>
             </View>

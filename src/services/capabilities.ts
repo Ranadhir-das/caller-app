@@ -61,3 +61,18 @@ export function isFaceVerificationExempt(user?: CapabilityUser | null): boolean 
   const role = (user.role || '').toUpperCase();
   return role === 'COUNSELOR' || role === 'ADMIN' || role === 'SUPER_ADMIN';
 }
+
+/** Determine if an employee is a project worker (IT, Video Editor, or Management).
+ *  Used to highlight project workspace capabilities appropriately.
+ */
+export function isProjectWorker(user?: CapabilityUser | null): boolean {
+  if (!user) return false;
+  const role = (user.role || '').toUpperCase();
+  return (
+    role === 'IT' ||
+    role === 'VIDEO_EDITOR' ||
+    role === 'ADMIN' ||
+    role === 'SUPER_ADMIN' ||
+    role === 'MANAGER'
+  );
+}

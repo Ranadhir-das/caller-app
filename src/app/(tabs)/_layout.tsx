@@ -8,7 +8,18 @@ export default function TabsLayout() {
   if (user && !isCallerCapable(user)) return <Redirect href={'/employee' as never} />;
 
   return (
-    <Tabs screenOptions={{ headerShown: false }} tabBar={props => <CallerTabBar {...props} />}>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          position: 'absolute',
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          elevation: 0,
+        },
+      }}
+      tabBar={props => <CallerTabBar {...props} />}
+    >
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="leads" options={{ title: 'Leads' }} />
       <Tabs.Screen name="history" options={{ title: 'History' }} />

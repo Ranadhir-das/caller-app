@@ -28,8 +28,8 @@ function TabIcon({ name, selected, accent = BLUE, inactive = '#A7C8FF' }: { name
 
 type TabBarAccent = { accent?: string; inactiveTint?: string };
 
-/** Reserves its own space so the bar never covers screen actions. */
-export function CallerTabBar({ state, descriptors, navigation, insets, accent = BLUE, inactiveTint = '#A7C8FF' }: BottomTabBarProps & TabBarAccent) {
+/** Floating pill bottom navigation bar with elevated depth, safe-area awareness, and high contrast. */
+export function CallerTabBar({ state, descriptors, navigation, insets, accent = BLUE, inactiveTint = '#B8D3FF' }: BottomTabBarProps & TabBarAccent) {
   const { colors } = useAppTheme();
   const [keyboardVisible, setKeyboardVisible] = useState(Keyboard.isVisible());
   useEffect(() => {
@@ -40,19 +40,27 @@ export function CallerTabBar({ state, descriptors, navigation, insets, accent = 
   if (keyboardVisible) return null;
 
   return (
-    <View style={[styles.footer, {
-      backgroundColor: colors.background,
-      paddingBottom: Math.max(insets.bottom, 10),
-      paddingLeft: Math.max(insets.left, 16),
-      paddingRight: Math.max(insets.right, 16),
-    }]}>
+    <View
+      pointerEvents="box-none"
+      style={[
+        styles.footer,
+        {
+          paddingBottom: Math.max(insets.bottom, 14),
+          paddingLeft: Math.max(insets.left, 16),
+          paddingRight: Math.max(insets.right, 16),
+        },
+      ]}
+    >
       <View style={[styles.bar, { backgroundColor: accent }]}>
         {state.routes.map((route, index) => {
           const selected = state.index === index;
           const options = descriptors[route.key].options;
           const title = options.title ?? route.name;
           return (
-            <Pressable key={route.key} accessibilityRole="tab" accessibilityState={{ selected }}
+            <Pressable
+              key={route.key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
               accessibilityLabel={options.tabBarAccessibilityLabel ?? title}
               testID={options.tabBarButtonTestID}
               onPress={() => {
@@ -60,9 +68,20 @@ export function CallerTabBar({ state, descriptors, navigation, insets, accent = 
                 if (!selected && !event.defaultPrevented) navigation.navigate(route.name, route.params);
               }}
               onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-              style={({ pressed }) => [styles.tab, selected && styles.selected, pressed && styles.pressed]}>
+              style={({ pressed }) => [styles.tab, selected && styles.selected, pressed && styles.pressed]}
+            >
               <TabIcon name={route.name} selected={selected} accent={accent} inactive={inactiveTint} />
-              {selected && <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.label, { color: accent }]}>{title}</Text>}
+              <Text
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.1}
+                style={[
+                  styles.label,
+                  { color: selected ? accent : inactiveTint },
+                  selected && styles.selectedLabel,
+                ]}
+              >
+                {title}
+              </Text>
             </Pressable>
           );
         })}
@@ -72,13 +91,70 @@ export function CallerTabBar({ state, descriptors, navigation, insets, accent = 
 }
 
 const styles = StyleSheet.create({
-  footer: { paddingTop: 8 },
-  bar: { width: '100%', maxWidth: 520, alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
-    backgroundColor: BLUE, borderRadius: 40, padding: 8, gap: 4, minHeight: 64 },
-  tab: { flex: 1, minHeight: 44, minWidth: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderRadius: 28, gap: 6, paddingHorizontal: 6 },
-  selected: { flex: 2.2, backgroundColor: '#FFFFFF' },
-  icon: { width: 22, height: 22 },
-  label: { color: BLUE, fontSize: 12.5, fontWeight: '700', flexShrink: 1 },
-  pressed: { opacity: 0.75 },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+    elevation: 16,
+  },
+  bar: {
+    width: '100%',
+    maxWidth: 480,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: BLUE,
+    borderRadius: 32,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    minHeight: 60,
+    // Modern floating elevation and deep shadow
+    shadowColor: '#001A4D',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  tab: {
+    flex: 1,
+    minHeight: 48,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    gap: 2,
+    paddingVertical: 5,
+    paddingHorizontal: 2,
+    marginHorizontal: 2,
+  },
+  selected: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  icon: {
+    width: 22,
+    height: 22,
+  },
+  label: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  selectedLabel: {
+    fontWeight: '700',
+  },
+  pressed: {
+    opacity: 0.8,
+  },
 });

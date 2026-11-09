@@ -316,29 +316,29 @@ export default function PointsBreakupScreen() {
         {/* 4-Stat Metric Row */}
         <View style={styles.statsGrid}>
           <View style={styles.statBox}>
-            <Text style={styles.statBoxLabel}>TODAY</Text>
+            <Text style={styles.statBoxLabel} numberOfLines={1}>TODAY</Text>
             <Text style={styles.statBoxValue}>
               +{summary?.daily_points ?? 0}
             </Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statBoxLabel}>THIS WEEK</Text>
+            <Text style={styles.statBoxLabel} numberOfLines={1}>WEEK</Text>
             <Text style={styles.statBoxValue}>
               +{summary?.weekly_points ?? 0}
             </Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statBoxLabel}>THIS MONTH</Text>
+            <Text style={styles.statBoxLabel} numberOfLines={1}>MONTH</Text>
             <Text style={styles.statBoxValue}>
               +{summary?.monthly_points ?? 0}
             </Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statBoxLabel}>DEDUCTIONS</Text>
+            <Text style={styles.statBoxLabel} numberOfLines={1} adjustsFontSizeToFit>DEDUCTIONS</Text>
             <Text
               style={[
                 styles.statBoxValue,
-                { color: totalDeductionPoints > 0 ? '#EF4444' : colors.muted },
+                { color: totalDeductionPoints > 0 ? colors.danger : colors.muted },
               ]}
             >
               {totalDeductionPoints > 0 ? `-${totalDeductionPoints}` : '0'}
@@ -737,13 +737,13 @@ const createStyles = (colors: AppColors) =>
       letterSpacing: 0.8,
     },
     peerScoreBadge: {
-      backgroundColor: '#FEF3C7',
+      backgroundColor: colors.warningSoft,
       paddingHorizontal: 10,
       paddingVertical: 4,
       borderRadius: 12,
     },
     peerScoreBadgeText: {
-      color: '#B45309',
+      color: colors.warning,
       fontSize: 11,
       fontWeight: '700',
     },
@@ -792,16 +792,16 @@ const createStyles = (colors: AppColors) =>
       backgroundColor: colors.surfaceMuted,
       borderRadius: 12,
       paddingVertical: 8,
-      paddingHorizontal: 6,
+      paddingHorizontal: 4,
       alignItems: 'center',
       borderWidth: 1,
       borderColor: colors.border,
     },
     statBoxLabel: {
-      fontSize: 9,
+      fontSize: 8.5,
       fontWeight: '800',
       color: colors.muted,
-      letterSpacing: 0.4,
+      letterSpacing: 0.2,
       marginBottom: 2,
     },
     statBoxValue: {

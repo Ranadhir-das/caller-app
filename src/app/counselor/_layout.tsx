@@ -8,7 +8,15 @@ export const unstable_settings = { initialRouteName: 'index' };
 export default function CounselorTabsLayout() {
   return (
     <Tabs
-      screenOptions={{ headerShown: false }}
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          position: 'absolute',
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          elevation: 0,
+        },
+      }}
       tabBar={(props) => <CallerTabBar {...props} accent={COUNSELOR_TEAL} inactiveTint="#A7E3DA" />}
     >
       <Tabs.Screen name="index" options={{ title: 'Dashboard' }} />

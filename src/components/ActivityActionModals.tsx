@@ -494,9 +494,9 @@ export function EndShiftModal({
                 marginTop: 12,
                 padding: 12,
                 borderRadius: 10,
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                backgroundColor: colors.warningSoft,
                 borderWidth: 1,
-                borderColor: 'rgba(245, 158, 11, 0.3)',
+                borderColor: colors.warning,
                 gap: 8,
               }}
             >
@@ -515,7 +515,7 @@ export function EndShiftModal({
                   paddingVertical: 8,
                   paddingHorizontal: 12,
                   borderRadius: 8,
-                  backgroundColor: '#a855f7',
+                  backgroundColor: colors.wavePurple,
                   alignSelf: 'flex-start',
                 }}
                 onPress={() => {

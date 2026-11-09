@@ -53,13 +53,32 @@ function AuthRedirect() {
 
     if (!user) return;
 
-    const employeeRoutes = ['/employee', '/employee/index', '/employee/attendance', '/employee/leave', '/employee/work', '/profile', '/settings', '/chat', '/notices', '/notifications', '/login', '/activity', '/points-breakup', '/performance'];
+    const employeeRoutes = [
+      '/employee',
+      '/employee/index',
+      '/employee/attendance',
+      '/employee/leave',
+      '/employee/work',
+      '/profile',
+      '/settings',
+      '/chat',
+      '/notices',
+      '/notifications',
+      '/login',
+      '/activity',
+      '/points-breakup',
+      '/performance',
+      '/projects',
+      '/projects/new',
+      '/projects/details',
+    ];
+    const isEmployeePath = employeeRoutes.includes(pathname) || pathname.startsWith('/projects');
     const canCaller = isCallerCapable(user) && !user.needs_onboarding;
     const canCounselor = isCounselorCapable(user) && !user.needs_onboarding;
 
     // Pure counselor entry flow: counselors land in /counselor
     if (canCounselor && !canCaller) {
-      if (pathname === '/login' || ![...employeeRoutes, ...COUNSELOR_ROUTES].includes(pathname)) {
+      if (pathname === '/login' || (!isEmployeePath && !COUNSELOR_ROUTES.includes(pathname))) {
         router.replace('/counselor' as never);
       }
       return;
@@ -78,7 +97,7 @@ function AuthRedirect() {
     }
 
     // If on a caller route without caller capability, redirect to counselor or employee
-    if (!employeeRoutes.includes(pathname) && !COUNSELOR_ROUTES.includes(pathname) && !canCaller) {
+    if (!isEmployeePath && !COUNSELOR_ROUTES.includes(pathname) && !canCaller) {
       router.replace(canCounselor ? ('/counselor' as never) : ('/employee' as never));
       return;
     }
@@ -115,6 +134,7 @@ function AppNavigator() {
         <Stack.Screen name="signup" />
         <Stack.Protected guard={!!user}>
           <Stack.Screen name="employee" />
+          <Stack.Screen name="projects" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="chat" />

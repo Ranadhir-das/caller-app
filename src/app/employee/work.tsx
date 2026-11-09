@@ -1,14 +1,37 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '@/context/AuthContext';
 import { useAppTheme, useAppStyles } from '@/context/AppThemeContext';
 import { useEmployeeWorkspace, ProjectReportItem } from '@/context/EmployeeWorkspaceContext';
-import { API_BASE_URL } from '@/services/api';
-import { ActionButton, DateField, FormInput, makeStyles } from '@/components/employee/shared';
+import { API_BASE_URL, ApiError } from '@/services/api';
+import { ActionButton, FormInput, makeStyles } from '@/components/employee/shared';
 import { KeyboardAwareContainer } from '@/components/KeyboardAwareContainer';
+import {
+  type ProjectWorkEntryForm,
+  type Project,
+  getProjects,
+  createEmptyProjectWorkEntry,
+  validateAllProjectWorkEntries,
+  buildProjectReportPayloadItem,
+  getEntryDurationInfo,
+} from '@/services/projects';
+import { ProjectWorkEntryCard } from '@/components/employee/ProjectWorkEntryCard';
+import { DailyProjectSummaryCard } from '@/components/employee/DailyProjectSummaryCard';
 
 function ReportPhoto({ id, size }: { id: number; size: number }) {
   const { token } = useAuth();
@@ -28,42 +51,86 @@ function ReportPhoto({ id, size }: { id: number; size: number }) {
   );
 }
 
-type ProjectEntry = {
-  project_name: string;
-  duration: string;
-  status: 'Completed' | 'In Progress' | 'Pending';
-  expected_completion_date: string;
-  notes: string;
-};
-
-const createEmptyProject = (): ProjectEntry => ({
-  project_name: '',
-  duration: '',
-  status: 'In Progress',
-  expected_completion_date: '',
-  notes: '',
-});
-
-const PROJECT_STATUSES: ('Completed' | 'In Progress' | 'Pending')[] = [
-  'Completed',
-  'In Progress',
-  'Pending',
-];
-
 export default function MyWorkScreen() {
   const { colors, mode } = useAppTheme();
   const styles = useAppStyles(makeStyles);
-  const { user } = useAuth();
-  const { data, refreshing, busy, load, run, request } = useEmployeeWorkspace();
+  const { token, user } = useAuth();
+  const { data, refreshing, busy, load, request } = useEmployeeWorkspace();
 
   const userRole = (user?.role || data?.role || '').toUpperCase();
   const isProjectWorker = userRole === 'IT' || userRole === 'VIDEO_EDITOR';
+
+  // Submission lock to avoid double taps
+  const [submitting, setSubmitting] = useState(false);
+  const isActionBusy = busy || submitting;
+
+  // Accessible projects list for selection (fetched from backend)
+  const [accessibleProjects, setAccessibleProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    let ignore = false;
+    if (token) {
+      getProjects(token)
+        .then((res) => {
+          if (!ignore && res?.projects) {
+            setAccessibleProjects(res.projects);
+          }
+        })
+        .catch(() => {
+          // Fallback relies on combinedProjects below
+        });
+    }
+    return () => {
+      ignore = true;
+    };
+  }, [token]);
+
+  const refreshAccessibleProjects = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await getProjects(token);
+      if (res?.projects) {
+        setAccessibleProjects(res.projects);
+      }
+    } catch {
+      // Fallback relies on combinedProjects below
+    }
+  }, [token]);
+
+  const combinedProjects = useMemo(() => {
+    if (accessibleProjects.length > 0) return accessibleProjects;
+    return (data?.projects || []).map((p) => ({
+      id: p.id,
+      title: p.title,
+      status: p.status as Project['status'],
+      status_display: p.status,
+      priority: 'MEDIUM' as const,
+      priority_display: 'Medium',
+      due_date: p.due_date,
+      description: p.description,
+      self_created: false,
+      created_at: '',
+      can_request_completion: false,
+      is_overdue: false,
+      review_comments: '',
+      completion_requested_at: null,
+    }));
+  }, [accessibleProjects, data?.projects]);
+
+  // Check if today's daily report has already been submitted in the workspace snapshot
+  const todaySubmittedReport = useMemo(() => {
+    if (!data?.reports?.length || !data?.date) return null;
+    return data.reports.find((r) => r.date === data.date) || null;
+  }, [data]);
 
   // Legacy single daily report state (for non-IT/Video Editor roles)
   const [notes, setNotes] = useState('');
 
   // Project-wise state (for IT & Video Editor roles)
-  const [projects, setProjects] = useState<ProjectEntry[]>([createEmptyProject()]);
+  // Initialized with a single entry containing an RFC4122 v4 UUID
+  const [projectEntries, setProjectEntries] = useState<ProjectWorkEntryForm[]>([
+    createEmptyProjectWorkEntry(),
+  ]);
   const [activeDatePickerIndex, setActiveDatePickerIndex] = useState<number | null>(null);
 
   // Common links and photo
@@ -71,37 +138,74 @@ export default function MyWorkScreen() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [pickingPhoto, setPickingPhoto] = useState(false);
 
-  const updateProject = <K extends keyof ProjectEntry>(index: number, field: K, value: ProjectEntry[K]) => {
-    setProjects(curr => curr.map((p, i) => i !== index ? p : {
-      ...p, [field]: value,
-      ...(field === 'status' && value === 'Completed' ? { expected_completion_date: '' } : {}),
-    }));
-    if (field === 'status' && value === 'Completed') setActiveDatePickerIndex(null);
+  // Update a single field on a project work entry card
+  const updateProjectEntry = <K extends keyof ProjectWorkEntryForm>(
+    index: number,
+    field: K,
+    value: ProjectWorkEntryForm[K],
+  ) => {
+    setProjectEntries((curr) =>
+      curr.map((p, i) =>
+        i !== index
+          ? p
+          : {
+              ...p,
+              [field]: value,
+              ...(field === 'status' && value === 'Completed' ? { expectedCompletionDate: '' } : {}),
+            },
+      ),
+    );
+    if (field === 'status' && value === 'Completed') {
+      setActiveDatePickerIndex(null);
+    }
   };
 
-  const addProject = () => {
-    setProjects(curr => [...curr, createEmptyProject()]);
+  // Select project from picker modal
+  const handleSelectProject = (index: number, projectId: number, projectName: string) => {
+    setProjectEntries((curr) =>
+      curr.map((p, i) =>
+        i !== index
+          ? p
+          : {
+              ...p,
+              projectId,
+              projectName,
+            },
+      ),
+    );
   };
 
-  const removeProject = (index: number) => {
-    if (projects.length <= 1) return;
+  // Add another project work entry card (generates a fresh unique UUID)
+  const addProjectEntry = () => {
+    setProjectEntries((curr) => [...curr, createEmptyProjectWorkEntry()]);
+  };
+
+  // Remove a project work entry card (only allowed if >1 cards)
+  const removeProjectEntry = (index: number) => {
+    if (projectEntries.length <= 1) return;
     setActiveDatePickerIndex(null);
-    setProjects(curr => curr.filter((_, i) => i !== index));
+    setProjectEntries((curr) => curr.filter((_, i) => i !== index));
   };
 
+  // Expected completion date picker handler
   const handleProjectDateChange = (event: { type: string }, selectedDate?: Date) => {
     const index = activeDatePickerIndex;
     setActiveDatePickerIndex(null);
     if (event.type !== 'set' || !selectedDate || index === null) return;
     const iso = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
-    updateProject(index, 'expected_completion_date', iso);
+    updateProjectEntry(index, 'expectedCompletionDate', iso);
   };
 
   const pickPhoto = async () => {
     if (pickingPhoto) return;
     setPickingPhoto(true);
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.4, base64: true, allowsEditing: false });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.4,
+        base64: true,
+        allowsEditing: false,
+      });
       if (result.canceled) return;
       const asset = result.assets[0];
       if (!asset.base64) throw new Error('Could not read this photo. Please choose another image.');
@@ -109,93 +213,125 @@ export default function MyWorkScreen() {
       setPhoto(`data:image/jpeg;base64,${asset.base64}`);
     } catch (e) {
       Alert.alert('Photo could not be added', e instanceof Error ? e.message : 'Please try again.');
-    } finally { setPickingPhoto(false); }
+    } finally {
+      setPickingPhoto(false);
+    }
   };
 
-  const handleSaveReport = () => {
+  const handleSaveReport = async () => {
+    if (isActionBusy) return;
+
     if (isProjectWorker) {
-      // Validate projects
-      if (!projects.length) {
-        Alert.alert('Required', 'Please add at least one project.');
+      // 1. Validate all project cards
+      const validation = validateAllProjectWorkEntries(projectEntries);
+      if (!validation.valid) {
+        Alert.alert('Required Information Missing', validation.error);
         return;
       }
-      for (let i = 0; i < projects.length; i++) {
-        const p = projects[i];
-        if (!p.project_name.trim()) {
-          Alert.alert('Project Name Required', `Please enter Project Name for Project ${i + 1}.`);
-          return;
-        }
-        if (!p.duration.trim()) {
-          Alert.alert('Work Duration Required', `Please enter Work Duration for Project ${i + 1}.`);
-          return;
-        }
-        if (p.status !== 'Completed' && !p.expected_completion_date.trim()) {
-          Alert.alert('Completion Date Required', `Please select Expected Completion Date for Project ${i + 1}.`);
-          return;
-        }
-      }
 
-      run(async () => {
-        const payload = {
-          date: data?.date,
-          project_reports: projects.map(p => ({
-            project_name: p.project_name.trim(),
-            duration: p.duration.trim(),
-            status: p.status,
-            expected_completion_date: p.status === 'Completed' ? '' : p.expected_completion_date.trim(),
-            notes: p.notes.trim(),
-          })),
-          work_links: links.map(link => link.trim()).filter(Boolean),
-          ...(photo ? { photo: photo.split(',')[1] } : {}),
-        };
+      // 2. Build payload with canonical fields & persistent client UUIDs
+      const payload = {
+        date: data?.date || new Date().toISOString().slice(0, 10),
+        project_reports: projectEntries.map(buildProjectReportPayloadItem),
+      };
+
+      setSubmitting(true);
+      try {
         await request('reports/', payload);
-        setProjects([createEmptyProject()]);
-        setLinks(['']);
-        setPhoto(null);
+        await Promise.all([load(), refreshAccessibleProjects()]);
+
+        // On success: reset form to 1 blank card with a fresh UUID
+        setProjectEntries([createEmptyProjectWorkEntry()]);
         Alert.alert('Saved', 'Your project-wise work report has been saved.');
-      });
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          // HTTP 409 Idempotency conflict: explain clearly, PRESERVE form data and UUIDs
+          Alert.alert(
+            'Idempotency Conflict',
+            err.message ||
+              'A work entry with this ID was already submitted with different details. Please review your entries.',
+          );
+        } else {
+          Alert.alert(
+            'Unable to Save Report',
+            err instanceof Error ? err.message : 'Please check your connection and try again.',
+          );
+        }
+        // NOTE: Form state, inputs, and client UUIDs are strictly preserved for retry
+      } finally {
+        setSubmitting(false);
+      }
     } else {
+      // Legacy daily report for other roles (CALLER, COUNSELOR, ACCOUNTANT, etc.)
       if (!notes.trim()) {
         Alert.alert('Work Notes Required', 'Please enter your work completed today.');
         return;
       }
-      run(async () => {
+
+      setSubmitting(true);
+      try {
         await request('reports/', {
-          date: data?.date,
+          date: data?.date || new Date().toISOString().slice(0, 10),
           notes: notes.trim(),
-          work_links: links.map(link => link.trim()).filter(Boolean),
+          work_links: links.map((link) => link.trim()).filter(Boolean),
           ...(photo ? { photo: photo.split(',')[1] } : {}),
         });
+        await load();
         setNotes('');
         setLinks(['']);
         setPhoto(null);
         Alert.alert('Saved', 'Your daily report has been saved.');
-      });
+      } catch (err) {
+        Alert.alert(
+          'Unable to Save Report',
+          err instanceof Error ? err.message : 'Please check your connection and try again.',
+        );
+      } finally {
+        setSubmitting(false);
+      }
     }
+  };
+
+  const handleRefresh = async () => {
+    await Promise.all([load(), refreshAccessibleProjects()]);
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAwareContainer
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} tintColor={colors.accent} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
+        }
       >
-        <Text style={styles.title}>My work</Text>
-
-        <Text style={styles.heading}>My assigned projects</Text>
-        {data?.projects.map(p => (
-          <View key={p.id} style={styles.card}>
-            <Text style={styles.label}>{p.title}</Text>
-            <Text style={styles.subtitle}>{p.description}</Text>
-            <Text style={styles.subtitle}>{p.status} | Due: {p.due_date || 'Not set'}</Text>
-            <View style={styles.row}>
-              {['STARTED', 'IN_PROGRESS', 'COMPLETED'].filter(s => s !== p.status).map(s => (
-                <ActionButton key={s} title={s.replaceAll('_', ' ')} busy={busy} onPress={() => run(async () => { await request(`projects/${p.id}/`, { status: s }, 'PATCH'); })} />
-              ))}
-            </View>
-          </View>
-        ))}
-        {!data?.projects.length && <Text style={styles.subtitle}>No projects assigned to you.</Text>}
+        {/* ================= TOP HEADER WITH MANAGE PROJECTS QUICK LINK ================= */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          }}
+        >
+          <Text style={styles.title}>My work</Text>
+          {isProjectWorker && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Manage Projects"
+              onPress={() => router.push('/projects' as never)}
+              style={{
+                paddingVertical: 6,
+                paddingHorizontal: 12,
+                borderRadius: 8,
+                backgroundColor: colors.accentSoft,
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>
+                Manage Projects ›
+              </Text>
+            </Pressable>
+          )}
+        </View>
 
         {isProjectWorker ? (
           /* ================= IT & VIDEO EDITOR: PROJECT-WISE REPORT ================= */
@@ -208,148 +344,69 @@ export default function MyWorkScreen() {
               </Text>
             </View>
 
-            {projects.map((project, index) => (
-              <View key={index} style={[styles.card, { padding: 14, gap: 12 }]}>
-                {/* Project Card Header */}
-                <View style={projectStyles.cardHeader}>
-                  <View style={projectStyles.projectBadge}>
-                    <View style={[projectStyles.badgeCircle, { backgroundColor: colors.accentSoft }]}>
-                      <Text style={[projectStyles.badgeText, { color: colors.primary }]}>{index + 1}</Text>
-                    </View>
-                    <Text style={[styles.heading, { fontSize: 16 }]}>Project {index + 1}</Text>
-                  </View>
-                  {projects.length > 1 && (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Remove project ${index + 1}`}
-                      disabled={busy}
-                      onPress={() => removeProject(index)}
-                      style={[projectStyles.removeBtn, { backgroundColor: colors.dangerSoft }]}
-                    >
-                      <Text style={[projectStyles.removeBtnText, { color: colors.danger }]}>✕ Remove</Text>
-                    </Pressable>
-                  )}
-                </View>
-
-                {/* 1. Project Name */}
-                <FormInput
-                  label="Project Name *"
-                  value={project.project_name}
-                  onChangeText={val => updateProject(index, 'project_name', val)}
-                  placeholder="e.g. CRM Mobile Dialer, Video Reels Batch"
-                />
-
-                {/* 2. Work Duration */}
-                <FormInput
-                  label="Work Duration *"
-                  value={project.duration}
-                  onChangeText={val => updateProject(index, 'duration', val)}
-                  placeholder="e.g. 3 hours, 2h 30m"
-                />
-
-                {/* 3. Project Status */}
+            {/* TODAY'S ALREADY SUBMITTED REPORT SUMMARY (if submitted earlier today) */}
+            {todaySubmittedReport &&
+              todaySubmittedReport.project_reports &&
+              todaySubmittedReport.project_reports.length > 0 && (
                 <View style={{ gap: 6 }}>
-                  <Text style={styles.label}>Project Status *</Text>
-                  <View style={projectStyles.statusRow}>
-                    {PROJECT_STATUSES.map(status => {
-                      const isSelected = project.status === status;
-                      return (
-                        <Pressable
-                          key={status}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: isSelected }}
-                          onPress={() => updateProject(index, 'status', status)}
-                          style={[
-                            projectStyles.statusChip,
-                            {
-                              backgroundColor: isSelected ? colors.primary : colors.surface,
-                              borderColor: isSelected ? colors.primary : colors.border,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              projectStyles.statusChipText,
-                              {
-                                fontWeight: isSelected ? '700' : '500',
-                                color: isSelected ? colors.onPrimary : colors.text,
-                              },
-                            ]}
-                          >
-                            {status}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  <DailyProjectSummaryCard
+                    title="Today's Submitted Report"
+                    date={todaySubmittedReport.date}
+                    isSubmitted
+                    entries={todaySubmittedReport.project_reports}
+                  />
                 </View>
+              )}
 
-                {/* 4. Expected Completion Date */}
-                {project.status !== 'Completed' && <DateField
-                  label="Expected Completion Date *"
-                  value={project.expected_completion_date ? new Date(`${project.expected_completion_date}T12:00:00`) : null}
-                  onPress={() => setActiveDatePickerIndex(index)}
-                />}
-
-                {/* 5. Work Note / Description (with voice input) */}
-                <FormInput
-                  label="Work Note / Description"
-                  value={project.notes}
-                  onChangeText={val => updateProject(index, 'notes', val)}
-                  multiline
-                  withVoice
-                  placeholder="Describe work done on this project (tap mic to speak)..."
-                />
-              </View>
+            {/* 1. Project Work Entry Cards */}
+            {projectEntries.map((project, index) => (
+              <ProjectWorkEntryCard
+                key={project.clientId}
+                entry={project}
+                index={index}
+                totalEntries={projectEntries.length}
+                accessibleProjects={combinedProjects}
+                onUpdate={(field, value) => updateProjectEntry(index, field, value)}
+                onRemove={() => removeProjectEntry(index)}
+                onSelectProject={(projId, projName) =>
+                  handleSelectProject(index, projId, projName)
+                }
+                onOpenDatePicker={() => setActiveDatePickerIndex(index)}
+                disabled={isActionBusy}
+              />
             ))}
 
-            {/* + Add Project Button */}
+            {/* 2. + Add Another Project Entry Button */}
             <Pressable
               accessibilityRole="button"
-              disabled={busy}
-              onPress={addProject}
+              accessibilityLabel="Add another project work entry"
+              disabled={isActionBusy}
+              onPress={addProjectEntry}
               style={[
                 projectStyles.addProjectBtn,
                 { borderColor: colors.primary, backgroundColor: colors.accentSoft },
+                isActionBusy && { opacity: 0.6 },
               ]}
             >
               <Text style={[projectStyles.addProjectText, { color: colors.primary }]}>
-                + Add Project
+                + Add Another Project
               </Text>
             </Pressable>
 
-            {/* Optional Links and Photo Container */}
-            <View style={styles.card}>
-              <Text style={styles.heading}>Work Attachments (optional)</Text>
-              {links.map((link, index) => (
-                <View key={index} style={{ gap: 6 }}>
-                  <FormInput
-                    label={`Work Link ${index + 1} (optional)`}
-                    value={link}
-                    onChangeText={value => setLinks(current => current.map((item, i) => (i === index ? value : item)))}
-                    placeholder="https://..."
-                  />
-                  {links.length > 1 && (
-                    <ActionButton title={`Remove Link ${index + 1}`} busy={busy} onPress={() => setLinks(current => current.filter((_, i) => i !== index))} />
-                  )}
-                </View>
-              ))}
-              {links.length < 30 && (
-                <ActionButton title="+ Add Another Link" busy={busy} onPress={() => setLinks(current => [...current, ''])} />
-              )}
-              <View style={{ gap: 6 }}>
-                <Text style={styles.label}>Work photo (optional)</Text>
-                {photo ? (
-                  <View style={photoStyles.previewRow}>
-                    <Image source={{ uri: photo }} style={photoStyles.preview} />
-                    <ActionButton title="Remove photo" busy={pickingPhoto} onPress={() => setPhoto(null)} />
-                  </View>
-                ) : (
-                  <ActionButton title={pickingPhoto ? 'Opening…' : 'Add photo'} busy={pickingPhoto} onPress={pickPhoto} />
-                )}
-              </View>
+            {/* 3. Daily Summary (Draft Aggregated Durations & Work) */}
+            <DailyProjectSummaryCard
+              title="Daily Summary"
+              isDraft
+              entries={projectEntries}
+            />
 
-              <ActionButton title="Save today's report" busy={busy} onPress={handleSaveReport} />
+            {/* 4. Full-width Submit Work Report button */}
+            <View style={{ marginTop: 6, marginBottom: 16 }}>
+              <ActionButton
+                title={submitting ? 'Submitting report...' : 'Submit Work Report'}
+                busy={isActionBusy}
+                onPress={handleSaveReport}
+              />
             </View>
           </View>
         ) : (
@@ -369,26 +426,50 @@ export default function MyWorkScreen() {
                 <FormInput
                   label={`Work Link ${index + 1} (optional)`}
                   value={link}
-                  onChangeText={value => setLinks(current => current.map((item, i) => (i === index ? value : item)))}
+                  onChangeText={(value) =>
+                    setLinks((current) => current.map((item, i) => (i === index ? value : item)))
+                  }
                 />
                 {links.length > 1 && (
-                  <ActionButton title={`Remove Link ${index + 1}`} busy={busy} onPress={() => setLinks(current => current.filter((_, i) => i !== index))} />
+                  <ActionButton
+                    title={`Remove Link ${index + 1}`}
+                    busy={isActionBusy}
+                    onPress={() => setLinks((current) => current.filter((_, i) => i !== index))}
+                  />
                 )}
               </View>
             ))}
-            {links.length < 30 && <ActionButton title="+ Add Another Link" busy={busy} onPress={() => setLinks(current => [...current, ''])} />}
+            {links.length < 30 && (
+              <ActionButton
+                title="+ Add Another Link"
+                busy={isActionBusy}
+                onPress={() => setLinks((current) => [...current, ''])}
+              />
+            )}
             <View style={{ gap: 6 }}>
               <Text style={styles.label}>Work photo (optional)</Text>
               {photo ? (
                 <View style={photoStyles.previewRow}>
                   <Image source={{ uri: photo }} style={photoStyles.preview} />
-                  <ActionButton title="Remove photo" busy={pickingPhoto} onPress={() => setPhoto(null)} />
+                  <ActionButton
+                    title="Remove photo"
+                    busy={pickingPhoto || isActionBusy}
+                    onPress={() => setPhoto(null)}
+                  />
                 </View>
               ) : (
-                <ActionButton title={pickingPhoto ? 'Opening…' : 'Add photo'} busy={pickingPhoto} onPress={pickPhoto} />
+                <ActionButton
+                  title={pickingPhoto ? 'Opening…' : 'Add photo'}
+                  busy={pickingPhoto || isActionBusy}
+                  onPress={pickPhoto}
+                />
               )}
             </View>
-            <ActionButton title="Save today's report" busy={busy} onPress={handleSaveReport} />
+            <ActionButton
+              title={submitting ? 'Submitting report...' : "Save today's report"}
+              busy={isActionBusy}
+              onPress={handleSaveReport}
+            />
           </View>
         )}
 
@@ -397,8 +478,10 @@ export default function MyWorkScreen() {
           <DateTimePicker
             themeVariant={mode}
             value={
-              projects[activeDatePickerIndex]?.expected_completion_date
-                ? new Date(`${projects[activeDatePickerIndex].expected_completion_date}T12:00:00`)
+              projectEntries[activeDatePickerIndex]?.expectedCompletionDate
+                ? new Date(
+                    `${projectEntries[activeDatePickerIndex].expectedCompletionDate}T12:00:00`,
+                  )
                 : new Date()
             }
             mode="date"
@@ -407,87 +490,217 @@ export default function MyWorkScreen() {
           />
         )}
 
-        {/* ================= PAST WORK REPORTS ================= */}
-        <Text style={[styles.heading, { marginTop: 12 }]}>Previous reports</Text>
-        {data?.reports.map(r => (
-          <View key={r.id} style={styles.card}>
-            <View style={photoStyles.reportRow}>
-              <View style={{ flex: 1, gap: 8 }}>
-                <Text style={styles.label}>{r.date}</Text>
+        {/* ================= HISTORICAL WORK REPORTS (WORKSPACE SNAPSHOT UP TO 30 RECENT) ================= */}
+        <View style={{ marginTop: 16, gap: 4 }}>
+          <Text style={styles.heading}>Previous reports</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>
+            Showing up to 30 most recent daily work reports available in your workspace snapshot.
+          </Text>
+        </View>
 
-                {r.project_reports && r.project_reports.length > 0 ? (
-                  <View style={{ gap: 10 }}>
-                    {r.project_reports.map((p: ProjectReportItem, pIdx: number) => {
-                      const statusColor =
-                        p.status === 'Completed'
-                          ? (mode === 'dark' ? colors.success : '#047857')
-                          : p.status === 'In Progress'
-                          ? (mode === 'dark' ? colors.accent : colors.primary)
-                          : colors.warning;
-                      const statusBackground = p.status === 'Completed' ? colors.successSoft : p.status === 'In Progress' ? colors.accentSoft : colors.warningSoft;
-                      return (
-                        <View
-                          key={pIdx}
-                          style={{
-                            backgroundColor: colors.background,
-                            borderRadius: 12,
-                            padding: 12,
-                            gap: 4,
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                          }}
-                        >
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Text style={[styles.label, { fontWeight: '700', flexGrow: 1, flexShrink: 1, flexBasis: 120 }]}>
-                              {p.project_name}
-                            </Text>
+        {data?.reports && data.reports.length > 0 ? (
+          data.reports.map((r) => (
+            <View key={r.id} style={styles.card}>
+              <View style={photoStyles.reportRow}>
+                <View style={{ flex: 1, gap: 10 }}>
+                  <Text style={styles.label}>{r.date}</Text>
+
+                  {r.project_reports && r.project_reports.length > 0 ? (
+                    <View style={{ gap: 10 }}>
+                      {/* Authoritative Daily Summary Card for this report */}
+                      <DailyProjectSummaryCard
+                        title="Daily Summary"
+                        date={r.date}
+                        isSubmitted
+                        entries={r.project_reports}
+                      />
+
+                      {/* Individual Project Entries Breakdown */}
+                      {r.project_reports.map((p: ProjectReportItem, pIdx: number) => {
+                        const durInfo = getEntryDurationInfo(p);
+                        const statusColor =
+                          p.status === 'Completed'
+                            ? mode === 'dark'
+                              ? colors.success
+                              : '#047857'
+                            : p.status === 'In Progress'
+                            ? colors.primary
+                            : colors.warning;
+                        const statusBackground =
+                          p.status === 'Completed'
+                            ? colors.successSoft
+                            : p.status === 'In Progress'
+                            ? colors.accentSoft
+                            : colors.warningSoft;
+
+                        const isLinked = p.project_id !== undefined && p.project_id !== null;
+
+                        return (
+                          <View
+                            key={pIdx}
+                            style={{
+                              backgroundColor: colors.surfaceMuted,
+                              borderRadius: 12,
+                              padding: 12,
+                              gap: 6,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                            }}
+                          >
                             <View
                               style={{
-                                paddingHorizontal: 8,
-                                paddingVertical: 2,
-                                borderRadius: 6,
-                                backgroundColor: statusBackground,
+                                flexDirection: 'row',
+                                flexWrap: 'wrap',
+                                gap: 8,
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
                               }}
                             >
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: statusColor }}>
-                                {p.status}
+                              <Text
+                                style={[
+                                  styles.label,
+                                  {
+                                    fontWeight: '700',
+                                    flexGrow: 1,
+                                    flexShrink: 1,
+                                    flexBasis: 120,
+                                  },
+                                ]}
+                              >
+                                {p.project_name}
                               </Text>
-                            </View>
-                          </View>
-                          <Text style={styles.subtitle}>
-                            Duration: {p.duration}{p.expected_completion_date ? ` | Due: ${p.expected_completion_date}` : ''}
-                          </Text>
-                          {!!p.notes && (
-                            <Text style={[styles.subtitle, { color: colors.text, marginTop: 2 }]}>
-                              {p.notes}
-                            </Text>
-                          )}
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <Text style={styles.subtitle}>{r.notes}</Text>
-                )}
 
-                {(r.work_links?.length ? r.work_links : r.work_link ? [r.work_link] : []).map((link, index) => (
-                  <Pressable
-                    key={`${index}-${link}`}
-                    accessibilityRole="link"
-                    onPress={() => {
-                      if (/^https?:\/\//i.test(link)) void Linking.openURL(link).catch(() => Alert.alert('Could not open link', link));
-                    }}
-                  >
-                    <Text selectable style={[styles.subtitle, { color: colors.primary }]}>
-                      {`Work Link ${index + 1}: ${link}`}
-                    </Text>
-                  </Pressable>
-                ))}
+                              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                                {/* Relationally Linked vs Unlinked Badge */}
+                                {isLinked ? (
+                                  <View
+                                    style={{
+                                      paddingHorizontal: 7,
+                                      paddingVertical: 2,
+                                      borderRadius: 6,
+                                      backgroundColor: colors.accentSoft,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: 10,
+                                        fontWeight: '700',
+                                        color: colors.primary,
+                                      }}
+                                    >
+                                      🔗 Linked #{p.project_id}
+                                    </Text>
+                                  </View>
+                                ) : (
+                                  <View
+                                    style={{
+                                      paddingHorizontal: 7,
+                                      paddingVertical: 2,
+                                      borderRadius: 6,
+                                      backgroundColor: colors.surface,
+                                      borderWidth: 1,
+                                      borderColor: colors.border,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: 10,
+                                        fontWeight: '600',
+                                        color: colors.muted,
+                                      }}
+                                    >
+                                      📄 Unlinked
+                                    </Text>
+                                  </View>
+                                )}
+
+                                {/* Status Chip */}
+                                <View
+                                  style={{
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 2,
+                                    borderRadius: 6,
+                                    backgroundColor: statusBackground,
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: statusColor }}>
+                                    {p.status}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+
+                            {/* Duration Information */}
+                            {durInfo.isIncomplete ? (
+                              <Text style={[styles.subtitle, { color: colors.warning, fontWeight: '600' }]}>
+                                ⚠️ Duration not recorded
+                                {p.expected_completion_date ? ` | Due: ${p.expected_completion_date}` : ''}
+                              </Text>
+                            ) : (
+                              <Text style={styles.subtitle}>
+                                Duration: {durInfo.formatted}
+                                {p.expected_completion_date ? ` | Due: ${p.expected_completion_date}` : ''}
+                              </Text>
+                            )}
+
+                            {!!p.notes && (
+                              <Text style={[styles.subtitle, { color: colors.text, marginTop: 2 }]}>
+                                {p.notes}
+                              </Text>
+                            )}
+
+                            {!!p.reference_link && (
+                              <Pressable
+                                accessibilityRole="link"
+                                onPress={() => {
+                                  if (/^https?:\/\//i.test(p.reference_link!)) {
+                                    void Linking.openURL(p.reference_link!).catch(() =>
+                                      Alert.alert('Could not open link', p.reference_link!),
+                                    );
+                                  }
+                                }}
+                              >
+                                <Text selectable style={[styles.subtitle, { color: colors.primary }]}>
+                                  {`🔗 Reference: ${p.reference_link}`}
+                                </Text>
+                              </Pressable>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <Text style={styles.subtitle}>{r.notes}</Text>
+                  )}
+
+                  {(r.work_links?.length ? r.work_links : r.work_link ? [r.work_link] : []).map(
+                    (link, index) => (
+                      <Pressable
+                        key={`${index}-${link}`}
+                        accessibilityRole="link"
+                        onPress={() => {
+                          if (/^https?:\/\//i.test(link))
+                            void Linking.openURL(link).catch(() =>
+                              Alert.alert('Could not open link', link),
+                            );
+                        }}
+                      >
+                        <Text selectable style={[styles.subtitle, { color: colors.primary }]}>
+                          {`Work Link ${index + 1}: ${link}`}
+                        </Text>
+                      </Pressable>
+                    ),
+                  )}
+                </View>
+                {r.has_photo && <ReportPhoto id={r.id} size={56} />}
               </View>
-              {r.has_photo && <ReportPhoto id={r.id} size={56} />}
             </View>
+          ))
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.subtitle}>No recent work reports available in this workspace snapshot.</Text>
           </View>
-        ))}
+        )}
       </KeyboardAwareContainer>
     </SafeAreaView>
   );
@@ -502,58 +715,10 @@ const photoStyles = StyleSheet.create({
 });
 
 const projectStyles = StyleSheet.create({
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  projectBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  badgeCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: {
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  removeBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  removeBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  statusChip: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  statusChipText: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
   addProjectBtn: {
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderStyle: 'dashed',
     alignItems: 'center',

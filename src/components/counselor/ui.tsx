@@ -115,7 +115,7 @@ export const createCounselorStyles = (c: AppColors) => {
   const soft = dark ? COUNSELOR_TEAL_SOFT_DARK : COUNSELOR_TEAL_SOFT_LIGHT;
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
-    content: { padding: 20, paddingBottom: 40, gap: 16 },
+    content: { padding: 18, paddingBottom: 110, gap: 14 },
     compactHeader: { gap: 2, paddingVertical: 4 },
     dashboardTitle: { color: c.text, fontSize: 24, fontWeight: '800' },
     dashboardSubtitle: { color: c.muted, fontSize: 13, fontWeight: '500' },

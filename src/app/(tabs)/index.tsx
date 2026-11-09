@@ -108,16 +108,32 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-      <View style={styles.header}>
-        <View style={{ flex: 1, marginRight: 12 }}>
-          <Text style={styles.greeting}>{greeting}, {displayName}</Text>
-          <Text style={styles.title}>Caller Dashboard</Text>
+      {/* Top Profile Area */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Open my profile"
+        onPress={() => router.push('/profile')}
+        style={styles.profileHeaderCard}
+      >
+        <View style={styles.avatarWrap}>
+          <CallerAvatar size={48} />
+          <View style={styles.onlineBadge} />
         </View>
 
-        <Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={() => router.push('/(tabs)/more')}>
-          <CallerAvatar />
-        </Pressable>
-      </View>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.greetingText}>{greeting},</Text>
+            <View style={styles.roleTag}>
+              <Text style={styles.roleTagText}>{user?.role || 'CALLER'}</Text>
+            </View>
+          </View>
+          <Text style={styles.displayName} numberOfLines={1}>{displayName}</Text>
+        </View>
+
+        <View style={styles.profileActionPill}>
+          <Text style={styles.profileActionText}>Profile ›</Text>
+        </View>
+      </Pressable>
 
       <CallerPointsCard />
       <ActivityStatusWidget />
@@ -677,6 +693,73 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     paddingHorizontal: 20,
   },
 
+  profileHeaderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: 8,
+    marginBottom: 14,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  avatarWrap: {
+    position: 'relative',
+  },
+  onlineBadge: {
+    position: 'absolute',
+    bottom: -1,
+    right: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10B981',
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  greetingText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.muted,
+  },
+  roleTag: {
+    backgroundColor: colors.accentSoft || '#EBF3FF',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  roleTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  displayName: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.2,
+    marginTop: 2,
+  },
+  profileActionPill: {
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: colors.accentSoft || '#EBF3FF',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  profileActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1231,7 +1314,7 @@ chevron: {
   fontSize: 22,
 },
 scrollContent: {
-  paddingBottom: 32,
+  paddingBottom: 110,
 },
 
 progressText: {

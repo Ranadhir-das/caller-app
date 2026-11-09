@@ -263,7 +263,7 @@ export default function ActivityScreen() {
   const isPaused = session?.status === 'PAUSED';
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Top Navigation Bar */}
       <View style={styles.topNav}>
         <AnimatedBackButton />
@@ -271,6 +271,18 @@ export default function ActivityScreen() {
           <Text style={styles.pageTitle}>Work Activity & Sessions</Text>
           <Text style={styles.pageSubtitle}>Daily tracking & shift history</Text>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Refresh activity"
+          style={styles.refreshBtn}
+          onPress={onPullToRefresh}
+        >
+          {sessionRefreshing || historyLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Text style={{ fontSize: 16 }}>🔄</Text>
+          )}
+        </Pressable>
       </View>
 
       <ScrollView
@@ -280,7 +292,7 @@ export default function ActivityScreen() {
           <RefreshControl
             refreshing={sessionRefreshing || historyLoading}
             onRefresh={onPullToRefresh}
-            tintColor={colors.accent}
+            tintColor={colors.primary}
           />
         }
       >
@@ -291,56 +303,69 @@ export default function ActivityScreen() {
 
         {sessionLoading ? (
           <View style={styles.card}>
-            <ActivityIndicator size="small" color={colors.accent} />
+            <ActivityIndicator size="small" color={colors.primary} />
           </View>
         ) : hasActiveSession && session ? (
           <View
             style={[
-              styles.card,
+              styles.liveCard,
               {
                 borderColor: isPaused
                   ? breakWarningExceeded
                     ? colors.danger
-                    : '#EAB308'
-                  : colors.accent,
-                borderWidth: 1.5,
+                    : colors.warning
+                  : colors.primary,
               },
             ]}
           >
             {/* Header row: Status pill + Category */}
             <View style={styles.sessionHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <View style={styles.rowAlign}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: isPaused
+                        ? breakWarningExceeded
+                          ? colors.dangerSoft
+                          : colors.warningSoft
+                        : colors.successSoft,
+                    },
+                  ]}
+                >
                   <View
                     style={[
-                      styles.statusBadge,
+                      styles.statusBadgeDot,
                       {
                         backgroundColor: isPaused
                           ? breakWarningExceeded
-                            ? '#FEE2E2'
-                            : '#FEF9C3'
-                          : colors.accentSoft,
+                            ? colors.danger
+                            : colors.warning
+                          : colors.success,
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.statusBadgeText,
+                      {
+                        color: isPaused
+                          ? breakWarningExceeded
+                            ? colors.danger
+                            : colors.warning
+                          : colors.success,
                       },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.statusBadgeText,
-                        {
-                          color: isPaused
-                            ? breakWarningExceeded
-                              ? colors.danger
-                              : '#854D0E'
-                            : colors.accent,
-                        },
-                      ]}
-                    >
-                      {isPaused ? 'PAUSED ON BREAK' : 'ACTIVE WORK SESSION'}
-                    </Text>
-                  </View>
+                    {isPaused
+                      ? breakWarningExceeded
+                        ? 'BREAK LIMIT EXCEEDED'
+                        : 'PAUSED ON BREAK'
+                      : 'ACTIVE WORK SESSION'}
+                  </Text>
                 </View>
 
-                <Text style={styles.currentCategoryTitle}>
+                <Text style={styles.currentCategoryTitle} numberOfLines={2}>
                   {isPaused
                     ? `Break: ${currentBreak?.reason?.name || 'Break'}`
                     : currentSegment?.category?.name || 'Work Activity'}
@@ -349,14 +374,14 @@ export default function ActivityScreen() {
 
               <View style={styles.mainTimerBox}>
                 <Text style={styles.timerSubtitle}>
-                  {isPaused ? 'BREAK DURATION' : 'NET WORK TIME'}
+                  {isPaused ? 'BREAK TIME' : 'NET WORK TIME'}
                 </Text>
                 <Text
                   style={[
                     styles.largeTimer,
                     isPaused
-                      ? { color: breakWarningExceeded ? colors.danger : '#EAB308' }
-                      : { color: colors.accent },
+                      ? { color: breakWarningExceeded ? colors.danger : colors.warning }
+                      : { color: colors.primary },
                   ]}
                 >
                   {formatDuration(isPaused ? breakElapsed : elapsedNet)}
@@ -367,29 +392,32 @@ export default function ActivityScreen() {
             {/* Warning alert if break threshold exceeded */}
             {isPaused && breakWarningExceeded && (
               <View style={styles.warningBox}>
+                <Text style={{ fontSize: 16 }}>⚠️</Text>
                 <Text style={styles.warningText}>
-                  ⚠️ This break has exceeded the expected limit ({currentBreak?.warning_threshold_minutes} min).
+                  This break has exceeded the expected limit ({currentBreak?.warning_threshold_minutes} min).
                 </Text>
               </View>
             )}
 
             {/* Duration metrics breakdown */}
-            <View style={styles.durationBreakdownRow}>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Net Work</Text>
-                <Text style={[styles.metricValue, { color: colors.accent }]}>
+            <View style={styles.durationBreakdownGrid}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricCardLabel}>⏱️ Net Work</Text>
+                <Text style={[styles.metricCardValue, { color: colors.primary }]}>
                   {formatDuration(elapsedNet)}
                 </Text>
               </View>
-              <View style={styles.metricDivider} />
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Break Time</Text>
-                <Text style={styles.metricValue}>{formatDuration(elapsedBreak)}</Text>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricCardLabel}>☕ Break Time</Text>
+                <Text style={[styles.metricCardValue, { color: colors.warning }]}>
+                  {formatDuration(elapsedBreak)}
+                </Text>
               </View>
-              <View style={styles.metricDivider} />
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Total Gross</Text>
-                <Text style={styles.metricValue}>{formatDuration(elapsedGross)}</Text>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricCardLabel}>⌛ Total Gross</Text>
+                <Text style={styles.metricCardValue}>
+                  {formatDuration(elapsedGross)}
+                </Text>
               </View>
             </View>
 
@@ -398,39 +426,85 @@ export default function ActivityScreen() {
               {isPaused ? (
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel="Resume work session"
                   disabled={mutating}
-                  style={[styles.primaryBtn, mutating && { opacity: 0.6 }]}
+                  style={[styles.resumeBtn, mutating && { opacity: 0.7 }]}
                   onPress={handleResume}
                 >
-                  <Text style={styles.primaryBtnText}>▶ Resume Work</Text>
+                  {mutating ? (
+                    <View style={styles.btnRowWithSpinner}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text
+                        style={[styles.resumeBtnText, { marginLeft: 6 }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
+                        Resuming...
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text
+                      style={styles.resumeBtnText}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
+                    >
+                      ▶ Resume Work
+                    </Text>
+                  )}
                 </Pressable>
               ) : (
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel="Take a break"
                   disabled={mutating}
-                  style={[styles.secondaryBtn, mutating && { opacity: 0.6 }]}
+                  style={[styles.takeBreakBtn, mutating && { opacity: 0.7 }]}
                   onPress={() => setPauseModalOpen(true)}
                 >
-                  <Text style={styles.secondaryBtnText}>☕ Take Break</Text>
+                  <Text
+                    style={styles.takeBreakBtnText}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                  >
+                    ☕ Take Break
+                  </Text>
                 </Pressable>
               )}
 
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Switch work category"
                 disabled={mutating}
-                style={[styles.secondaryBtn, mutating && { opacity: 0.6 }]}
+                style={[styles.secondaryBtn, mutating && { opacity: 0.7 }]}
                 onPress={() => setSwitchModalOpen(true)}
               >
-                <Text style={styles.secondaryBtnText}>🔄 Switch</Text>
+                <Text
+                  style={styles.secondaryBtnText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  🔄 Switch
+                </Text>
               </Pressable>
 
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="End shift"
                 disabled={mutating}
-                style={[styles.dangerBtn, mutating && { opacity: 0.6 }]}
+                style={[styles.dangerBtn, mutating && { opacity: 0.7 }]}
                 onPress={() => setEndShiftModalOpen(true)}
               >
-                <Text style={styles.dangerBtnText}>End Shift</Text>
+                <Text
+                  style={styles.dangerBtnText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  End Shift
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -438,35 +512,41 @@ export default function ActivityScreen() {
           <View style={styles.card}>
             {user?.shift_workflow_enabled ? (
               <>
-                <Text style={styles.cardHeading}>No Active Shift</Text>
+                <View style={styles.emptyStateHeader}>
+                  <Text style={{ fontSize: 32 }}>⏱️</Text>
+                  <Text style={styles.cardHeading}>No Active Shift</Text>
+                </View>
                 <Text style={styles.cardSubtitle}>
                   You are signed in. When you are ready to begin your workday, explicitly start your shift below.
                 </Text>
                 <Pressable
                   accessibilityRole="button"
                   disabled={mutating}
-                  style={[styles.primaryBtn, { marginTop: 10 }, mutating && { opacity: 0.6 }]}
+                  style={[styles.primaryBtn, { marginTop: 12 }, mutating && { opacity: 0.6 }]}
                   onPress={handleStartShift}
                 >
                   {mutating ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.primaryBtnText}>Start Shift</Text>
+                    <Text style={styles.primaryBtnText}>🚀 Start Shift</Text>
                   )}
                 </Pressable>
               </>
             ) : (
               <>
-                <Text style={styles.cardHeading}>No Active Shift</Text>
+                <View style={styles.emptyStateHeader}>
+                  <Text style={{ fontSize: 32 }}>📸</Text>
+                  <Text style={styles.cardHeading}>No Active Shift</Text>
+                </View>
                 <Text style={styles.cardSubtitle}>
                   Work tracking starts automatically when you complete photo attendance check-in.
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  style={[styles.primaryBtn, { marginTop: 10 }]}
+                  style={[styles.primaryBtn, { marginTop: 12 }]}
                   onPress={() => router.push('/employee/attendance' as never)}
                 >
-                  <Text style={styles.primaryBtnText}>Go to Attendance Check-In</Text>
+                  <Text style={styles.primaryBtnText}>Go to Attendance Check-In →</Text>
                 </Pressable>
               </>
             )}
@@ -478,8 +558,12 @@ export default function ActivityScreen() {
         {/* ======================================================== */}
         <Text style={[styles.sectionHeading, { marginTop: 14 }]}>Activity History</Text>
 
-        {/* Filter Pills */}
-        <View style={styles.filterPillsRow}>
+        {/* Filter Pills (Horizontal Scroll for Responsive Layout) */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterPillsRow}
+        >
           {(
             [
               ['today', 'Today'],
@@ -496,17 +580,14 @@ export default function ActivityScreen() {
                 accessibilityState={{ selected: isSelected }}
                 style={[
                   styles.filterPill,
-                  isSelected && {
-                    backgroundColor: colors.accent,
-                    borderColor: colors.accent,
-                  },
+                  isSelected && styles.filterPillActive,
                 ]}
                 onPress={() => setActivePreset(key)}
               >
                 <Text
                   style={[
                     styles.filterPillText,
-                    isSelected && { color: '#FFFFFF', fontWeight: '700' },
+                    isSelected && styles.filterPillTextActive,
                   ]}
                 >
                   {label}
@@ -514,37 +595,37 @@ export default function ActivityScreen() {
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
         {/* Summary Card for Selected Filter */}
         {historyData?.summary && (
           <View style={styles.card}>
             <View style={styles.rowBetween}>
               <Text style={styles.cardHeading}>Period Summary</Text>
-              <Text style={styles.cardBadge}>
-                {historyData.summary.total_sessions} session
-                {historyData.summary.total_sessions === 1 ? '' : 's'}
-              </Text>
+              <View style={styles.sessionCountPill}>
+                <Text style={styles.sessionCountText}>
+                  {historyData.summary.total_sessions} session
+                  {historyData.summary.total_sessions === 1 ? '' : 's'}
+                </Text>
+              </View>
             </View>
 
-            <View style={styles.durationBreakdownRow}>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Total Net</Text>
-                <Text style={[styles.metricValue, { color: colors.accent }]}>
+            <View style={styles.durationBreakdownGrid}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricCardLabel}>⏱️ Total Net</Text>
+                <Text style={[styles.metricCardValue, { color: colors.primary }]}>
                   {formatDuration(historyData.summary.total_net_seconds)}
                 </Text>
               </View>
-              <View style={styles.metricDivider} />
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Total Breaks</Text>
-                <Text style={styles.metricValue}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricCardLabel}>☕ Breaks</Text>
+                <Text style={[styles.metricCardValue, { color: colors.warning }]}>
                   {formatDuration(historyData.summary.total_break_seconds)}
                 </Text>
               </View>
-              <View style={styles.metricDivider} />
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Total Gross</Text>
-                <Text style={styles.metricValue}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricCardLabel}>⌛ Gross</Text>
+                <Text style={styles.metricCardValue}>
                   {formatDuration(historyData.summary.total_gross_seconds)}
                 </Text>
               </View>
@@ -558,27 +639,26 @@ export default function ActivityScreen() {
             accessibilityRole="button"
             accessibilityLabel="View points breakup"
             onPress={() => router.push('/points-breakup' as never)}
-            style={[
-              styles.card,
-              { backgroundColor: colors.accentSoft, borderColor: colors.accent + '44' },
-            ]}
+            style={styles.pointsCard}
           >
             <View style={styles.rowBetween}>
               <View style={styles.rowAlign}>
-                <Text style={{ fontSize: 18 }}>🏆</Text>
-                <Text style={[styles.cardHeading, { color: colors.accent }]}>
-                  Performance Points
-                </Text>
+                <View style={styles.trophyCircle}>
+                  <Text style={{ fontSize: 20 }}>🏆</Text>
+                </View>
+                <View>
+                  <Text style={styles.pointsCardHeading}>Performance Points</Text>
+                  <Text style={styles.pointsDisclaimer}>
+                    {historyData.performance_points.note}
+                  </Text>
+                </View>
               </View>
               <Text style={styles.pointsBadgeValue}>
                 {historyData.performance_points.total_points} pts
               </Text>
             </View>
-            <Text style={styles.pointsDisclaimer}>
-              {historyData.performance_points.note}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 8 }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.accent }}>
+            <View style={styles.pointsLinkRow}>
+              <Text style={styles.pointsLinkText}>
                 View Points Breakup by Work →
               </Text>
             </View>
@@ -589,18 +669,20 @@ export default function ActivityScreen() {
         {/* SECTION 3: SESSIONS & TIMELINE LIST */}
         {/* ======================================================== */}
         {historyLoading && !historyData ? (
-          <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-            <ActivityIndicator size="small" color={colors.accent} />
+          <View style={{ paddingVertical: 28, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={colors.primary} />
           </View>
         ) : historyError ? (
           <View style={styles.card}>
-            <Text style={{ color: colors.danger }}>{historyError}</Text>
+            <Text style={{ color: colors.danger, fontWeight: '600' }}>{historyError}</Text>
           </View>
         ) : !historyData?.sessions || historyData.sessions.length === 0 ? (
-          <View style={[styles.card, { alignItems: 'center', paddingVertical: 24 }]}>
-            <Text style={{ fontSize: 24, marginBottom: 6 }}>📅</Text>
-            <Text style={styles.cardHeading}>No recorded sessions</Text>
-            <Text style={styles.cardSubtitle}>
+          <View style={[styles.card, { alignItems: 'center', paddingVertical: 32 }]}>
+            <View style={styles.emptyIconCircle}>
+              <Text style={{ fontSize: 28 }}>📅</Text>
+            </View>
+            <Text style={[styles.cardHeading, { marginTop: 10 }]}>No recorded sessions</Text>
+            <Text style={[styles.cardSubtitle, { textAlign: 'center', marginTop: 4, maxWidth: 280 }]}>
               No completed or active work sessions found for this period.
             </Text>
           </View>
@@ -676,6 +758,8 @@ function SessionHistoryCard({
   const styles = useAppStyles(createStyles);
 
   const formattedDate = formatSessionDate(session.date);
+  const isActive = session.status === 'ACTIVE';
+  const isPaused = session.status === 'PAUSED';
 
   return (
     <View style={styles.historyCard}>
@@ -687,21 +771,25 @@ function SessionHistoryCard({
         onPress={onToggle}
       >
         <View style={{ flex: 1 }}>
-          <View style={styles.rowAlign}>
+          <View style={styles.historyTopRow}>
             <Text style={styles.historyDateTitle}>{formattedDate}</Text>
             <View
               style={[
                 styles.statusTag,
-                session.status === 'ACTIVE'
-                  ? { backgroundColor: colors.accentSoft }
+                isActive
+                  ? { backgroundColor: colors.successSoft }
+                  : isPaused
+                  ? { backgroundColor: colors.warningSoft }
                   : { backgroundColor: colors.surfaceMuted },
               ]}
             >
               <Text
                 style={[
                   styles.statusTagText,
-                  session.status === 'ACTIVE'
-                    ? { color: colors.accent }
+                  isActive
+                    ? { color: colors.success }
+                    : isPaused
+                    ? { color: colors.warning }
                     : { color: colors.muted },
                 ]}
               >
@@ -710,31 +798,52 @@ function SessionHistoryCard({
             </View>
           </View>
 
-          <View style={[styles.rowAlign, { marginTop: 4, gap: 12 }]}>
-            <Text style={styles.historyDurationSnippet}>
-              Net: <Text style={{ color: colors.accent, fontWeight: '700' }}>{formatDuration(session.net_seconds ?? 0)}</Text>
-            </Text>
-            <Text style={styles.historyDurationSnippet}>
-              Break: {formatDuration(session.break_seconds ?? 0)}
-            </Text>
-            <Text style={styles.historyDurationSnippet}>
-              Gross: {formatDuration(session.gross_seconds ?? 0)}
-            </Text>
+          <View style={styles.historyMetricsPillRow}>
+            <View style={styles.historyMetricBadge}>
+              <Text style={styles.historyMetricLabel}>Net</Text>
+              <Text style={[styles.historyMetricValue, { color: colors.primary }]}>
+                {formatDuration(session.net_seconds ?? 0)}
+              </Text>
+            </View>
+            <View style={styles.historyMetricBadge}>
+              <Text style={styles.historyMetricLabel}>Break</Text>
+              <Text style={[styles.historyMetricValue, { color: colors.warning }]}>
+                {formatDuration(session.break_seconds ?? 0)}
+              </Text>
+            </View>
+            <View style={styles.historyMetricBadge}>
+              <Text style={styles.historyMetricLabel}>Gross</Text>
+              <Text style={styles.historyMetricValue}>
+                {formatDuration(session.gross_seconds ?? 0)}
+              </Text>
+            </View>
           </View>
         </View>
 
-        <Text style={{ fontSize: 16, color: colors.muted }}>
-          {expanded ? '▲' : '▼'}
-        </Text>
+        <View style={styles.chevronCircle}>
+          <Text style={{ fontSize: 12, color: colors.muted }}>
+            {expanded ? '▲' : '▼'}
+          </Text>
+        </View>
       </Pressable>
 
       {/* Expandable Timeline */}
       {expanded && (
         <View style={styles.timelineContainer}>
-          <Text style={styles.timelineHeading}>Chronological Timeline</Text>
+          <View style={styles.rowBetween}>
+            <Text style={styles.timelineHeading}>Chronological Timeline</Text>
+            <Text style={styles.timelineEventCount}>
+              {session.timeline?.length || 0} event{session.timeline?.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+
           {session.timeline && session.timeline.length > 0 ? (
             session.timeline.map((event, idx) => (
-              <TimelineItem key={idx} event={event} isLast={idx === session.timeline.length - 1} />
+              <TimelineItem
+                key={idx}
+                event={event}
+                isLast={idx === session.timeline.length - 1}
+              />
             ))
           ) : (
             <Text style={styles.cardSubtitle}>No timeline events recorded.</Text>
@@ -757,24 +866,29 @@ function TimelineItem({
 
   const formatTime = formatEventTime;
 
-  let dotColor = colors.accent;
+  let dotColor = colors.primary;
   let title = '';
   let subtitle = '';
   let durationSnippet = '';
   let noteText = '';
+  let badgeType: 'START' | 'SEGMENT' | 'BREAK' | 'END' = 'SEGMENT';
+  const isBreak = event.type === 'BREAK';
+  const isOverdue = isBreak && Boolean(event.exceeded);
 
   if (event.type === 'SHIFT_START') {
-    dotColor = '#10B981';
+    dotColor = colors.success;
     title = 'Shift Started';
     subtitle = formatTime(event.timestamp);
+    badgeType = 'START';
   } else if (event.type === 'SEGMENT') {
-    dotColor = event.category?.color_hex || colors.accent;
-    title = `Segment: ${event.category?.name || 'Work'}`;
+    dotColor = event.category?.color_hex || colors.primary;
+    title = event.category?.name || 'Work Activity';
     subtitle = `${formatTime(event.started_at)} – ${formatTime(event.ended_at) || 'Present'}`;
     durationSnippet = formatDuration(event.duration_seconds ?? 0);
     noteText = event.note;
+    badgeType = 'SEGMENT';
   } else if (event.type === 'BREAK') {
-    dotColor = event.exceeded ? colors.danger : '#EAB308';
+    dotColor = event.exceeded ? colors.danger : colors.warning;
     title = `Break: ${event.reason?.name || 'Break'}`;
     subtitle = `${formatTime(event.started_at)} – ${formatTime(event.ended_at) || 'Present'}`;
     durationSnippet = formatDuration(event.duration_seconds ?? 0);
@@ -782,10 +896,12 @@ function TimelineItem({
       durationSnippet += ` (Exceeded ${event.warning_threshold_minutes}m)`;
     }
     noteText = event.note;
+    badgeType = 'BREAK';
   } else if (event.type === 'SHIFT_END') {
-    dotColor = '#64748B';
+    dotColor = colors.muted;
     title = `Shift Ended (${event.reason_display || event.reason})`;
     subtitle = formatTime(event.timestamp);
+    badgeType = 'END';
   }
 
   return (
@@ -796,18 +912,57 @@ function TimelineItem({
         {!isLast && <View style={styles.timelineConnectingLine} />}
       </View>
 
-      {/* Right details */}
+      {/* Right details card */}
       <View style={styles.timelineDetailsBox}>
-        <View style={styles.rowBetween}>
-          <Text style={styles.timelineItemTitle}>{title}</Text>
-          {!!durationSnippet && (
-            <Text style={styles.timelineItemDuration}>{durationSnippet}</Text>
+        <View style={styles.timelineEventCard}>
+          <View style={styles.rowBetween}>
+            <View style={[styles.rowAlign, { flex: 1, flexWrap: 'wrap' }]}>
+              <Text style={styles.timelineItemTitle}>{title}</Text>
+              {isBreak && (
+                <View
+                  style={[
+                    styles.microBadge,
+                    {
+                      backgroundColor: isOverdue
+                        ? colors.dangerSoft
+                        : colors.warningSoft,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.microBadgeText,
+                      { color: isOverdue ? colors.danger : colors.warning },
+                    ]}
+                  >
+                    {isOverdue ? 'OVERDUE' : 'BREAK'}
+                  </Text>
+                </View>
+              )}
+            </View>
+            {!!durationSnippet && (
+              <View style={styles.durationPill}>
+                <Text
+                  style={[
+                    styles.durationPillText,
+                    {
+                      color:
+                        badgeType === 'BREAK' ? colors.warning : colors.primary,
+                    },
+                  ]}
+                >
+                  {durationSnippet}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.timelineItemSubtitle}>{subtitle}</Text>
+          {!!noteText && (
+            <View style={styles.noteBubble}>
+              <Text style={styles.timelineItemNote}>“{noteText}”</Text>
+            </View>
           )}
         </View>
-        <Text style={styles.timelineItemSubtitle}>{subtitle}</Text>
-        {!!noteText && (
-          <Text style={styles.timelineItemNote}>“{noteText}”</Text>
-        )}
       </View>
     </View>
   );
@@ -832,25 +987,37 @@ const createStyles = (c: AppColors) =>
       backgroundColor: c.surface,
     },
     pageTitle: {
-      fontSize: 17,
-      fontWeight: '700',
+      fontSize: 18,
+      fontWeight: '800',
       color: c.text,
+      letterSpacing: -0.2,
     },
     pageSubtitle: {
       fontSize: 12,
       color: c.muted,
       marginTop: 1,
     },
+    refreshBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: c.surfaceMuted,
+      borderWidth: 1,
+      borderColor: c.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     content: {
       padding: 16,
-      gap: 12,
-      paddingBottom: 40,
+      gap: 14,
+      paddingBottom: 48,
     },
     sectionHeading: {
       fontSize: 15,
-      fontWeight: '700',
+      fontWeight: '800',
       color: c.text,
       letterSpacing: 0.2,
+      marginBottom: 2,
     },
     card: {
       padding: 16,
@@ -859,6 +1026,23 @@ const createStyles = (c: AppColors) =>
       borderWidth: 1,
       borderColor: c.border,
       gap: 12,
+      shadowColor: c.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    liveCard: {
+      padding: 16,
+      borderRadius: 18,
+      backgroundColor: c.surface,
+      borderWidth: 1.5,
+      gap: 14,
+      shadowColor: c.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08,
+      shadowRadius: 10,
+      elevation: 3,
     },
     sessionHeaderRow: {
       flexDirection: 'row',
@@ -866,29 +1050,45 @@ const createStyles = (c: AppColors) =>
       justifyContent: 'space-between',
     },
     statusBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 6,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 20,
       alignSelf: 'flex-start',
       marginBottom: 6,
+    },
+    statusBadgeDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
     },
     statusBadgeText: {
       fontSize: 10,
       fontWeight: '800',
-      letterSpacing: 0.4,
+      letterSpacing: 0.5,
     },
     currentCategoryTitle: {
-      fontSize: 18,
-      fontWeight: '700',
+      fontSize: 19,
+      fontWeight: '800',
       color: c.text,
+      letterSpacing: -0.3,
     },
     mainTimerBox: {
       alignItems: 'flex-end',
+      backgroundColor: c.surfaceMuted,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.border,
     },
     timerSubtitle: {
       fontSize: 9,
-      fontWeight: '700',
+      fontWeight: '800',
       color: c.muted,
+      letterSpacing: 0.6,
       marginBottom: 2,
     },
     largeTimer: {
@@ -897,116 +1097,175 @@ const createStyles = (c: AppColors) =>
       fontVariant: ['tabular-nums'],
     },
     warningBox: {
-      backgroundColor: '#FEF2F2',
+      backgroundColor: c.dangerSoft,
       borderWidth: 1,
-      borderColor: '#FECACA',
-      borderRadius: 8,
-      padding: 8,
+      borderColor: c.danger,
+      borderRadius: 10,
+      padding: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
     },
     warningText: {
-      color: '#DC2626',
-      fontSize: 11,
+      color: c.danger,
+      fontSize: 12,
       fontWeight: '600',
+      flex: 1,
+      lineHeight: 16,
     },
-    durationBreakdownRow: {
+    durationBreakdownGrid: {
       flexDirection: 'row',
-      backgroundColor: c.background,
+      gap: 8,
+    },
+    metricCard: {
+      flex: 1,
+      backgroundColor: c.surfaceMuted,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: c.border,
-      padding: 12,
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    metricItem: {
-      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 6,
       alignItems: 'center',
     },
-    metricLabel: {
+    metricCardLabel: {
       fontSize: 11,
+      fontWeight: '600',
       color: c.muted,
-      marginBottom: 3,
+      marginBottom: 4,
     },
-    metricValue: {
+    metricCardValue: {
       fontSize: 14,
-      fontWeight: '700',
+      fontWeight: '800',
       color: c.text,
       fontVariant: ['tabular-nums'],
-    },
-    metricDivider: {
-      width: 1,
-      height: 26,
-      backgroundColor: c.border,
     },
     controlButtonsRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      marginTop: 4,
+      marginTop: 2,
+    },
+    btnRowWithSpinner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     primaryBtn: {
       flex: 1,
-      backgroundColor: c.accent,
+      backgroundColor: c.primary,
       paddingVertical: 12,
-      borderRadius: 10,
+      paddingHorizontal: 8,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: 44,
+      minHeight: 46,
     },
     primaryBtnText: {
       color: '#FFFFFF',
       fontWeight: '700',
-      fontSize: 13,
+      fontSize: 12.5,
+      textAlign: 'center',
+    },
+    resumeBtn: {
+      flex: 1.35,
+      backgroundColor: c.success,
+      paddingVertical: 12,
+      paddingHorizontal: 6,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 46,
+    },
+    resumeBtnText: {
+      color: '#FFFFFF',
+      fontWeight: '700',
+      fontSize: 12.5,
+      textAlign: 'center',
+    },
+    takeBreakBtn: {
+      flex: 1.2,
+      backgroundColor: c.warningSoft,
+      borderWidth: 1,
+      borderColor: c.warning,
+      paddingVertical: 12,
+      paddingHorizontal: 6,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 46,
+    },
+    takeBreakBtnText: {
+      color: c.warning,
+      fontWeight: '700',
+      fontSize: 12.5,
+      textAlign: 'center',
     },
     secondaryBtn: {
-      flex: 1,
+      flex: 0.95,
       backgroundColor: c.surfaceMuted,
       borderWidth: 1,
       borderColor: c.border,
       paddingVertical: 12,
-      borderRadius: 10,
+      paddingHorizontal: 6,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: 44,
+      minHeight: 46,
     },
     secondaryBtnText: {
       color: c.text,
-      fontWeight: '600',
-      fontSize: 13,
+      fontWeight: '700',
+      fontSize: 12.5,
+      textAlign: 'center',
     },
     dangerBtn: {
-      paddingHorizontal: 14,
-      backgroundColor: '#FEF2F2',
+      flex: 0.95,
+      backgroundColor: c.dangerSoft,
       borderWidth: 1,
-      borderColor: '#FECACA',
+      borderColor: c.danger,
       paddingVertical: 12,
-      borderRadius: 10,
+      paddingHorizontal: 6,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: 44,
+      minHeight: 46,
     },
     dangerBtnText: {
-      color: '#DC2626',
+      color: c.danger,
       fontWeight: '700',
-      fontSize: 13,
+      fontSize: 12.5,
+      textAlign: 'center',
+    },
+    emptyStateHeader: {
+      alignItems: 'center',
+      gap: 6,
+      marginBottom: 2,
     },
     filterPillsRow: {
       flexDirection: 'row',
       gap: 8,
-      flexWrap: 'wrap',
+      paddingVertical: 4,
     },
     filterPill: {
-      paddingHorizontal: 12,
-      paddingVertical: 7,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
       borderRadius: 20,
       borderWidth: 1,
       borderColor: c.border,
       backgroundColor: c.surface,
     },
+    filterPillActive: {
+      backgroundColor: c.primary,
+      borderColor: c.primary,
+    },
     filterPillText: {
-      fontSize: 12,
+      fontSize: 13,
       color: c.text,
-      fontWeight: '500',
+      fontWeight: '600',
+    },
+    filterPillTextActive: {
+      color: '#FFFFFF',
+      fontWeight: '700',
     },
     rowBetween: {
       flexDirection: 'row',
@@ -1020,29 +1279,84 @@ const createStyles = (c: AppColors) =>
     },
     cardHeading: {
       fontSize: 15,
-      fontWeight: '700',
+      fontWeight: '800',
       color: c.text,
+      letterSpacing: -0.2,
     },
     cardSubtitle: {
       fontSize: 12,
-      lineHeight: 17,
+      lineHeight: 18,
       color: c.muted,
     },
-    cardBadge: {
-      fontSize: 12,
-      fontWeight: '600',
+    sessionCountPill: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+      backgroundColor: c.surfaceMuted,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    sessionCountText: {
+      fontSize: 11,
+      fontWeight: '700',
       color: c.muted,
     },
-    pointsBadgeValue: {
-      fontSize: 16,
+    pointsCard: {
+      padding: 16,
+      borderRadius: 16,
+      backgroundColor: c.accentSoft,
+      borderWidth: 1,
+      borderColor: c.accent + '33',
+      gap: 10,
+    },
+    trophyCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: c.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    pointsCardHeading: {
+      fontSize: 15,
       fontWeight: '800',
       color: c.accent,
+    },
+    pointsBadgeValue: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: c.accent,
+      fontVariant: ['tabular-nums'],
     },
     pointsDisclaimer: {
       fontSize: 11,
       lineHeight: 15,
       color: c.text,
       opacity: 0.8,
+      marginTop: 2,
+    },
+    pointsLinkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      marginTop: 4,
+    },
+    pointsLinkText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: c.accent,
+    },
+    emptyIconCircle: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: c.surfaceMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: c.border,
     },
     historyCard: {
       borderRadius: 16,
@@ -1056,6 +1370,13 @@ const createStyles = (c: AppColors) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       padding: 14,
+      gap: 10,
+    },
+    historyTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
     },
     historyDateTitle: {
       fontSize: 14,
@@ -1063,17 +1384,52 @@ const createStyles = (c: AppColors) =>
       color: c.text,
     },
     statusTag: {
-      paddingHorizontal: 6,
+      paddingHorizontal: 8,
       paddingVertical: 2,
-      borderRadius: 4,
+      borderRadius: 6,
     },
     statusTagText: {
       fontSize: 10,
-      fontWeight: '700',
+      fontWeight: '800',
+      letterSpacing: 0.3,
     },
-    historyDurationSnippet: {
-      fontSize: 12,
+    historyMetricsPillRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flexWrap: 'wrap',
+    },
+    historyMetricBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: c.surfaceMuted,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    historyMetricLabel: {
+      fontSize: 10,
       color: c.muted,
+      fontWeight: '600',
+    },
+    historyMetricValue: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: c.text,
+      fontVariant: ['tabular-nums'],
+    },
+    chevronCircle: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: c.surfaceMuted,
+      borderWidth: 1,
+      borderColor: c.border,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     timelineContainer: {
       borderTopWidth: 1,
@@ -1083,63 +1439,99 @@ const createStyles = (c: AppColors) =>
       gap: 12,
     },
     timelineHeading: {
-      fontSize: 12,
-      fontWeight: '700',
+      fontSize: 11,
+      fontWeight: '800',
       color: c.muted,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      marginBottom: 2,
+      letterSpacing: 0.6,
+    },
+    timelineEventCount: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: c.muted,
     },
     timelineRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
     },
     timelineLineContainer: {
-      width: 20,
+      width: 18,
       alignItems: 'center',
-      marginRight: 8,
+      marginRight: 10,
     },
     timelineDot: {
       width: 10,
       height: 10,
       borderRadius: 5,
-      marginTop: 4,
+      marginTop: 6,
     },
     timelineConnectingLine: {
       width: 2,
       flex: 1,
       minHeight: 28,
       backgroundColor: c.border,
-      marginVertical: 2,
+      marginVertical: 4,
     },
     timelineDetailsBox: {
       flex: 1,
-      paddingBottom: 10,
+      paddingBottom: 8,
+    },
+    timelineEventCard: {
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      padding: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+      gap: 4,
     },
     timelineItemTitle: {
       fontSize: 13,
-      fontWeight: '600',
+      fontWeight: '700',
       color: c.text,
     },
-    timelineItemDuration: {
+    microBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
+      marginLeft: 6,
+    },
+    microBadgeText: {
+      fontSize: 9,
+      fontWeight: '800',
+      letterSpacing: 0.3,
+    },
+    durationPill: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      backgroundColor: c.surfaceMuted,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    durationPillText: {
       fontSize: 11,
-      fontWeight: '700',
-      color: c.accent,
+      fontWeight: '800',
+      fontVariant: ['tabular-nums'],
     },
     timelineItemSubtitle: {
       fontSize: 11,
       color: c.muted,
-      marginTop: 1,
+    },
+    noteBubble: {
+      marginTop: 4,
+      padding: 8,
+      borderRadius: 8,
+      backgroundColor: c.surfaceMuted,
+      borderLeftWidth: 3,
+      borderLeftColor: c.primary,
     },
     timelineItemNote: {
       fontSize: 11,
-      color: c.muted,
+      color: c.text,
       fontStyle: 'italic',
-      marginTop: 3,
+      lineHeight: 15,
     },
   });
-
-
 
 export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
   const { colors } = useAppTheme();
@@ -1154,7 +1546,7 @@ export function ErrorBoundary({ error, retry }: { error: Error; retry: () => voi
       </Text>
       <Pressable
         onPress={retry}
-        style={{ backgroundColor: colors.accent, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10 }}
+        style={{ backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10 }}
       >
         <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Retry</Text>
       </Pressable>

@@ -1,4 +1,4 @@
-import { StyleSheet, Switch, Text, View, ScrollView } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimatedBackButton } from '@/components/AnimatedBackButton';
 import { useAppStyles, useAppTheme, type AppColors } from '@/context/AppThemeContext';
@@ -16,13 +16,19 @@ export default function SettingsScreen() {
         <Text style={styles.description}>Personalize and manage your Vaani app.</Text>
 
         <Text style={styles.sectionHeader}>APPEARANCE</Text>
-        <View style={styles.card}>
+        <Pressable
+          accessibilityRole="switch"
+          accessibilityLabel="Dark theme"
+          accessibilityState={{ checked: mode === 'dark' }}
+          style={styles.card}
+          onPress={toggleTheme}
+        >
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Dark theme</Text>
             <Text style={styles.description}>{mode === 'dark' ? 'Dark appearance is on' : 'Light appearance is on'}</Text>
           </View>
-          <Switch accessibilityLabel="Dark theme" value={mode === 'dark'} onValueChange={toggleTheme} trackColor={{ false: colors.border, true: colors.primary }} thumbColor={colors.onPrimary} />
-        </View>
+          <Switch accessibilityLabel="Dark theme switch" value={mode === 'dark'} onValueChange={toggleTheme} trackColor={{ false: colors.border, true: colors.primary }} thumbColor={colors.onPrimary} />
+        </Pressable>
         <Text style={styles.footnote}>Your theme preference is saved on this device and applies throughout the app.</Text>
 
         <Text style={styles.sectionHeader}>APP UPDATES</Text>

@@ -641,7 +641,7 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
 
   list: {
     paddingTop: 20,
-    paddingBottom: 30,
+    paddingBottom: 110,
   },
 
   historyCard: {

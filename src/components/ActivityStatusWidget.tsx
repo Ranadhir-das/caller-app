@@ -226,8 +226,8 @@ export function ActivityStatusWidget({
         style={[
           styles.card,
           isPaused
-            ? { borderColor: breakWarningExceeded ? colors.danger : '#EAB308' }
-            : { borderColor: colors.accent },
+            ? { borderColor: breakWarningExceeded ? colors.danger : colors.warning }
+            : { borderColor: colors.primary },
         ]}
       >
         {/* Top bar: Category / Break label & Live Timer */}
@@ -241,7 +241,7 @@ export function ActivityStatusWidget({
             <View
               style={[
                 styles.statusDot,
-                { backgroundColor: isPaused ? '#EAB308' : colors.accent },
+                { backgroundColor: isPaused ? colors.warning : colors.primary },
               ]}
             />
             <View>
@@ -262,8 +262,8 @@ export function ActivityStatusWidget({
               style={[
                 styles.timerText,
                 isPaused
-                  ? { color: breakWarningExceeded ? colors.danger : '#EAB308' }
-                  : { color: colors.accent },
+                  ? { color: breakWarningExceeded ? colors.danger : colors.warning }
+                  : { color: colors.primary },
               ]}
             >
               {formatDuration(isPaused ? breakElapsed : elapsedNet)}
@@ -287,13 +287,30 @@ export function ActivityStatusWidget({
               accessibilityRole="button"
               accessibilityLabel="Resume work session"
               disabled={mutating}
-              style={[styles.primaryActionBtn, mutating && { opacity: 0.6 }]}
+              style={[styles.resumeActionBtn, mutating && { opacity: 0.7 }]}
               onPress={handleResume}
             >
               {mutating ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <View style={styles.btnRowWithSpinner}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text
+                    style={[styles.resumeActionText, { marginLeft: 6 }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                  >
+                    Resuming...
+                  </Text>
+                </View>
               ) : (
-                <Text style={styles.primaryActionText}>▶ Resume Work</Text>
+                <Text
+                  style={styles.resumeActionText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  ▶ Resume Work
+                </Text>
               )}
             </Pressable>
           ) : (
@@ -302,20 +319,34 @@ export function ActivityStatusWidget({
                 accessibilityRole="button"
                 accessibilityLabel="Take a break"
                 disabled={mutating}
-                style={[styles.secondaryActionBtn, mutating && { opacity: 0.6 }]}
+                style={[styles.secondaryActionBtn, mutating && { opacity: 0.7 }]}
                 onPress={() => setPauseModalOpen(true)}
               >
-                <Text style={styles.secondaryActionText}>☕ Take Break</Text>
+                <Text
+                  style={styles.secondaryActionText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  ☕ Take Break
+                </Text>
               </Pressable>
 
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Switch work category"
                 disabled={mutating}
-                style={[styles.secondaryActionBtn, mutating && { opacity: 0.6 }]}
+                style={[styles.secondaryActionBtn, mutating && { opacity: 0.7 }]}
                 onPress={() => setSwitchModalOpen(true)}
               >
-                <Text style={styles.secondaryActionText}>🔄 Switch</Text>
+                <Text
+                  style={styles.secondaryActionText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  🔄 Switch
+                </Text>
               </Pressable>
             </>
           )}
@@ -326,7 +357,12 @@ export function ActivityStatusWidget({
             style={[styles.smallDetailsBtn, { borderColor: colors.border }]}
             onPress={handleOpenDetails}
           >
-            <Text style={[styles.smallDetailsText, { color: colors.muted }]}>
+            <Text
+              style={[styles.smallDetailsText, { color: colors.muted }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
               Details →
             </Text>
           </Pressable>
@@ -421,19 +457,42 @@ const createWidgetStyles = (c: AppColors) =>
       gap: 8,
       marginTop: 2,
     },
+    btnRowWithSpinner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     primaryActionBtn: {
       flex: 1,
       backgroundColor: c.accent,
       paddingVertical: 10,
+      paddingHorizontal: 8,
       borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: 40,
     },
+    resumeActionBtn: {
+      flex: 1,
+      backgroundColor: c.success,
+      paddingVertical: 10,
+      paddingHorizontal: 8,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 40,
+    },
+    resumeActionText: {
+      color: '#FFFFFF',
+      fontWeight: '700',
+      fontSize: 13,
+      textAlign: 'center',
+    },
     primaryActionText: {
       color: '#FFFFFF',
       fontWeight: '700',
       fontSize: 13,
+      textAlign: 'center',
     },
     secondaryActionBtn: {
       flex: 1,
@@ -441,6 +500,7 @@ const createWidgetStyles = (c: AppColors) =>
       borderWidth: 1,
       borderColor: c.border,
       paddingVertical: 10,
+      paddingHorizontal: 6,
       borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
@@ -449,7 +509,8 @@ const createWidgetStyles = (c: AppColors) =>
     secondaryActionText: {
       color: c.text,
       fontWeight: '600',
-      fontSize: 13,
+      fontSize: 12.5,
+      textAlign: 'center',
     },
     smallDetailsBtn: {
       paddingHorizontal: 12,
@@ -463,6 +524,7 @@ const createWidgetStyles = (c: AppColors) =>
     smallDetailsText: {
       fontSize: 12,
       fontWeight: '600',
+      textAlign: 'center',
     },
     smallButton: {
       paddingHorizontal: 12,
@@ -476,15 +538,15 @@ const createWidgetStyles = (c: AppColors) =>
       fontWeight: '600',
     },
     warningBanner: {
-      backgroundColor: '#FEF2F2',
+      backgroundColor: c.dangerSoft,
       borderWidth: 1,
-      borderColor: '#FECACA',
+      borderColor: c.danger,
       borderRadius: 8,
       paddingHorizontal: 10,
       paddingVertical: 6,
     },
     warningText: {
-      color: '#DC2626',
+      color: c.danger,
       fontSize: 11,
       fontWeight: '600',
       lineHeight: 15,

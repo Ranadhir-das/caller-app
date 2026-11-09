@@ -117,7 +117,7 @@ const createStyles = (colors: AppColors) => {
 
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: 20, paddingBottom: 32, gap: 12 },
+    content: { padding: 20, paddingBottom: 110, gap: 12 },
     title: { color: colors.text, fontSize: 28, fontWeight: '700' },
     subtitle: { color: colors.muted, fontSize: 14, marginTop: 5, lineHeight: 21 },
     card: {

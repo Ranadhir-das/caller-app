@@ -616,7 +616,7 @@ const createStyles = (c: AppColors) => {
 
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
-    content: { padding: 18, paddingBottom: 48, gap: 16 },
+    content: { padding: 18, paddingBottom: 110, gap: 16 },
 
     header: { gap: 6, marginBottom: 4 },
     eyebrow: { color: COUNSELOR_TEAL, fontSize: 12, fontWeight: '800', letterSpacing: 1.2 },

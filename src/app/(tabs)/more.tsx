@@ -81,7 +81,7 @@ export default function MoreScreen() {
 
 const createStyles = (colors: AppColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 20, paddingBottom: 32, gap: 12 },
+  content: { padding: 20, paddingBottom: 110, gap: 12 },
   title: { color: colors.text, fontSize: 28, fontWeight: '700' },
   subtitle: { color: colors.muted, fontSize: 14, marginTop: 5, lineHeight: 21 },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 76 },

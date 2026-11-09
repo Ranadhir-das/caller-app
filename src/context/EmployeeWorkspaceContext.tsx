@@ -13,11 +13,16 @@ import {
 export type { AttendanceRequestItem, CreateAttendanceRequestPayload };
 
 export type ProjectReportItem = {
+  entry_id?: string;
+  client_entry_id?: string;
+  project_id?: number | null;
   project_name: string;
   duration: string;
+  duration_minutes?: number;
   status: 'Completed' | 'In Progress' | 'Pending' | string;
   expected_completion_date: string;
   notes?: string;
+  reference_link?: string;
 };
 
 export type Workspace = {
